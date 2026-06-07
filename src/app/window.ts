@@ -12,6 +12,14 @@ import { Document } from "./document";
 import { Editor } from "./editor";
 import { trackContextMenuCommand } from "./editorContextMenu";
 import {
+  contextMenuScreenPoint,
+  enableEditorEventMask,
+  handleEditorNotify,
+  updateContextMenuState,
+  WM_CONTEXTMENU,
+  WM_NOTIFY,
+} from "./editorInput";
+import {
   HighlightController,
   INCREMENTAL_THRESHOLD,
 } from "../highlight/controller";
@@ -64,9 +72,6 @@ import { packWndClassEx } from "../win32/wndclass";
 
 const NULL = 0n;
 const NULL_PTR = null as unknown as Pointer;
-
-const WM_PARENTNOTIFY = 0x0210;
-const WM_RBUTTONDOWN = 0x0204;
 
 export type MainWindowOptions = {
   title?: string;
@@ -252,17 +257,29 @@ export class MainWindow {
         this.raiseChrome();
         return 0n;
 
-      case WM_PARENTNOTIFY: {
-        const event = Number(wParam & 0xffffn);
-        if (event === WM_RBUTTONDOWN && lParam === this.editorHwnd) {
-          const point = Buffer.alloc(8);
-          User32.GetCursorPos(ffiPtr(point));
+      case WM_CONTEXTMENU: {
+        if (BigInt(wParam) === BigInt(this.editorHwnd)) {
+          const { screenX, screenY } = contextMenuScreenPoint(lParam);
+          this.showEditorContextMenu(screenX, screenY);
+          return 0n;
+        }
+        return User32.DefWindowProcW(hWnd, msg, wParam, lParam);
+      }
+
+      case WM_NOTIFY: {
+        const result = handleEditorNotify(lParam, this.editorHwnd);
+        if (!result.handled) {
+          return User32.DefWindowProcW(hWnd, msg, wParam, lParam);
+        }
+        if ("commandId" in result) {
+          void this.dispatchCommand(result.commandId);
+        } else if ("contextMenu" in result) {
           this.showEditorContextMenu(
-            point.readInt32LE(0),
-            point.readInt32LE(4),
+            result.contextMenu.screenX,
+            result.contextMenu.screenY,
           );
         }
-        return 0n;
+        return 1n;
       }
 
       case WM_CTLCOLOREDIT: {
@@ -349,6 +366,10 @@ export class MainWindow {
     }
 
     this.editor = new Editor(this.editorHwnd);
+    if (this.useRichEdit) {
+      enableEditorEventMask(this.editorHwnd);
+    }
+    User32.SetFocus(this.editorHwnd);
     this.highlighter.setLanguageMode(
       this.settingsStore?.languageMode ?? "auto",
       this.document.path,
@@ -533,6 +554,14 @@ export class MainWindow {
   }
 
   private showEditorContextMenu(screenX: number, screenY: number): void {
+    if (this.editor) {
+      const { start, end } = this.editor.getSelection();
+      updateContextMenuState(this.menus.contextMenu, {
+        hasSelection: start !== end,
+        canUndo: this.editor.canUndo(),
+      });
+    }
+
     const commandId = trackContextMenuCommand(
       this.menus.contextMenu,
       this.hwnd,

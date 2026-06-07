@@ -6,7 +6,8 @@ import {
   TPM_TOPALIGN,
   TPM_VERTICAL,
 } from "../win32/layout";
-import { ffiPtr } from "../win32/strings";
+
+const WM_NULL = 0x0000;
 
 /** Shows a TrackPopupMenu context menu at screen coordinates. */
 export const trackContextMenuCommand = (
@@ -16,15 +17,15 @@ export const trackContextMenuCommand = (
   screenY: number,
 ): number => {
   User32.SetForegroundWindow(owner);
-  return Number(
-    User32.TrackPopupMenu(
-      menu,
-      TPM_RETURNCMD | TPM_LEFTALIGN | TPM_TOPALIGN | TPM_VERTICAL,
-      screenX,
-      screenY,
-      0,
-      owner,
-      ffiPtr(Buffer.alloc(0)),
-    ),
+  const cmd = User32.TrackPopupMenu(
+    menu,
+    TPM_RETURNCMD | TPM_LEFTALIGN | TPM_TOPALIGN | TPM_VERTICAL,
+    screenX,
+    screenY,
+    0,
+    owner,
+    null,
   );
+  User32.PostMessageW(owner, WM_NULL, 0n, 0n);
+  return Number(cmd);
 };

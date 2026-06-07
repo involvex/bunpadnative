@@ -134,14 +134,14 @@ const buildContextMenu = (retain: Buffer[]): bigint => {
     );
   };
 
-  item("Undo", MenuCommand.EditUndo);
-  item("Redo", MenuCommand.EditRedo);
+  item("Undo\tCtrl+Z", MenuCommand.EditUndo);
+  item("Redo\tCtrl+Y", MenuCommand.EditRedo);
   User32.AppendMenuW(menu, MF_SEPARATOR, 0n, null);
-  item("Cut", MenuCommand.EditCut);
-  item("Copy", MenuCommand.EditCopy);
-  item("Paste", MenuCommand.EditPaste);
+  item("Cut\tCtrl+X", MenuCommand.EditCut);
+  item("Copy\tCtrl+C", MenuCommand.EditCopy);
+  item("Paste\tCtrl+V", MenuCommand.EditPaste);
   User32.AppendMenuW(menu, MF_SEPARATOR, 0n, null);
-  item("Select All", MenuCommand.EditSelectAll);
+  item("Select All\tCtrl+A", MenuCommand.EditSelectAll);
 
   return menu;
 };

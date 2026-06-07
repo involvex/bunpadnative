@@ -56,6 +56,11 @@ if (!menus.accelTable) {
   throw new Error("Accelerator table was not created");
 }
 
+const contextCount = User32.GetMenuItemCount(menus.contextMenu);
+if (contextCount !== 8) {
+  throw new Error(`Context menu expected 8 items, got ${contextCount}`);
+}
+
 const ids = [
   MenuCommand.FileNew,
   MenuCommand.FileOpen,
