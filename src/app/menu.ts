@@ -21,6 +21,7 @@ export enum MenuCommand {
   FileSaveAs = 1004,
   FileExit = 1005,
   EditSelectAll = 1101,
+  PluginsReload = 1201,
 }
 
 export type AppMenu = {
@@ -42,7 +43,7 @@ const packAccel = (
   buf.writeUInt16LE(command, offset + 4);
 };
 
-/** Build File/Edit menu bar and keyboard accelerator table. */
+/** Build File/Edit/Plugins menu bar and keyboard accelerator table. */
 export const createAppMenu = (): AppMenu => {
   const retain: Buffer[] = [];
 
@@ -54,9 +55,10 @@ export const createAppMenu = (): AppMenu => {
 
   const fileMenu = User32.CreateMenu();
   const editMenu = User32.CreateMenu();
+  const pluginsMenu = User32.CreateMenu();
   const menuBar = User32.CreateMenu();
 
-  if (!fileMenu || !editMenu || !menuBar) {
+  if (!fileMenu || !editMenu || !pluginsMenu || !menuBar) {
     throw new Error("CreateMenu failed");
   }
 
@@ -100,6 +102,13 @@ export const createAppMenu = (): AppMenu => {
   );
 
   User32.AppendMenuW(
+    pluginsMenu,
+    MF_STRING,
+    BigInt(MenuCommand.PluginsReload),
+    label("&Reload Plugins").ptr!,
+  );
+
+  User32.AppendMenuW(
     menuBar,
     MF_POPUP,
     fileMenu,
@@ -110,6 +119,12 @@ export const createAppMenu = (): AppMenu => {
     MF_POPUP,
     editMenu,
     label("&Edit").ptr!,
+  );
+  User32.AppendMenuW(
+    menuBar,
+    MF_POPUP,
+    pluginsMenu,
+    label("&Plugins").ptr!,
   );
 
   const accelBuf = Buffer.alloc(ACCEL_SIZE * 4);

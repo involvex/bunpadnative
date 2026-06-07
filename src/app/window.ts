@@ -13,6 +13,8 @@ import { Editor } from "./editor";
 import { createAppMenu, MenuCommand, type AppMenu } from "./menu";
 import { showOpenDialog, showSaveDialog } from "../io/dialog";
 import type { MessagePumpContext } from "../loop/messageLoop";
+import { EditorContextImpl } from "../plugins/context";
+import type { PluginHost } from "../plugins/host";
 import {
   CS_HREDRAW,
   CS_VREDRAW,
@@ -35,6 +37,7 @@ export type MainWindowOptions = {
   title?: string;
   width?: number;
   height?: number;
+  pluginHost?: PluginHost;
 };
 
 export class MainWindow {
@@ -53,6 +56,8 @@ export class MainWindow {
   private destroyed = false;
   private readonly useRichEdit: boolean;
   private readonly menu: AppMenu;
+  private readonly pluginHost?: PluginHost;
+  private editorContext: EditorContextImpl | null = null;
 
   readonly document = new Document();
   editor: Editor | null = null;
@@ -62,6 +67,7 @@ export class MainWindow {
   private constructor(options: MainWindowOptions) {
     const title = options.title ?? "BunPad Native";
     this.titleBuf = encodeWide(title);
+    this.pluginHost = options.pluginHost;
 
     this.msfteditModule = Kernel32.LoadLibraryW(
       encodeWide("Msftedit.dll").ptr!,
@@ -174,6 +180,9 @@ export class MainWindow {
         if (notifyCode === EN_CHANGE && lParam === this.editorHwnd) {
           this.document.markDirty();
           this.refreshTitle();
+          if (this.editorContext && this.pluginHost) {
+            this.pluginHost.scheduleTextChange(this.editorContext);
+          }
           return 0n;
         }
 
@@ -192,6 +201,7 @@ export class MainWindow {
         this.hwnd = 0n;
         this.editorHwnd = 0n;
         this.editor = null;
+        this.editorContext = null;
         this.onClose?.();
         User32.PostQuitMessage(0);
         return 0n;
@@ -228,7 +238,9 @@ export class MainWindow {
     }
 
     this.editor = new Editor(this.editorHwnd);
+    this.editorContext = this.buildEditorContext();
     this.resizeEditor(parentHwnd);
+    void this.pluginHost?.activateAll(this.editorContext);
   }
 
   private resizeEditor(parentHwnd: bigint): void {
@@ -246,12 +258,31 @@ export class MainWindow {
     User32.MoveWindow(this.editorHwnd, 0, 0, width, height, 1);
   }
 
+  private buildEditorContext(): EditorContextImpl {
+    return new EditorContextImpl(
+      this.editor!,
+      this.document,
+      (message) => this.showInfo(message),
+    );
+  }
+
   private refreshTitle(): void {
     const dirtyMark = this.document.dirty ? " *" : "";
     this.titleBuf = encodeWide(
       `${this.document.displayName()}${dirtyMark} — BunPad`,
     );
     User32.SetWindowTextW(this.hwnd, this.titleBuf.ptr!);
+  }
+
+  private showInfo(message: string): void {
+    const text = encodeWide(message);
+    const caption = encodeWide("BunPad");
+    User32.MessageBoxW(
+      this.hwnd,
+      text.ptr!,
+      caption.ptr!,
+      MessageBoxType.MB_OK | MessageBoxType.MB_ICONINFORMATION,
+    );
   }
 
   private showError(message: string): void {
@@ -299,6 +330,10 @@ export class MainWindow {
           editor.selectAll();
           break;
 
+        case MenuCommand.PluginsReload:
+          await this.reloadPlugins();
+          break;
+
         default:
           break;
       }
@@ -337,8 +372,26 @@ export class MainWindow {
       }
     }
 
-    await this.document.writeToDisk(path, editor.getText());
+    await this.document.writeToDisk(
+      path,
+      this.editorContext && this.pluginHost
+        ? await this.pluginHost.runBeforeSave(
+            this.editorContext,
+            editor.getText(),
+          )
+        : editor.getText(),
+    );
     this.refreshTitle();
+  }
+
+  private async reloadPlugins(): Promise<void> {
+    if (!this.pluginHost || !this.editorContext) {
+      return;
+    }
+
+    const count = await this.pluginHost.loadAll();
+    await this.pluginHost.activateAll(this.editorContext);
+    this.showInfo(`Reloaded ${count} plugin(s).`);
   }
 
   destroy(): void {
@@ -358,6 +411,7 @@ export class MainWindow {
 
     this.editorHwnd = 0n;
     this.editor = null;
+    this.editorContext = null;
     User32.UnregisterClassW(this.classNameBuf.ptr!, NULL);
     this.wndProc.close();
 

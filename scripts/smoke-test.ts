@@ -16,11 +16,11 @@ win.onClose = () => {
   running = false;
 };
 
-win.editor?.setText("BunPad Phase 2 smoke test");
+win.editor?.setText("BunPad Phase 3 smoke test");
 pumpOnce(ctx);
 
 const readBack = win.editor?.getText() ?? "";
-if (!readBack.includes("BunPad Phase 2")) {
+if (!readBack.includes("BunPad Phase 3")) {
   throw new Error(`Unexpected editor text: ${readBack}`);
 }
 

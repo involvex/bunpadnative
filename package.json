@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "bun run src/index.ts",
     "typecheck": "tsc --noEmit",
-    "test:smoke": "bun run scripts/smoke-test.ts"
+    "test:smoke": "bun run scripts/smoke-test.ts",
+    "test:plugins": "bun run scripts/plugin-test.ts"
   },
   "dependencies": {
     "@bun-win32/comdlg32": "^1.0.0",
