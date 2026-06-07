@@ -5,8 +5,8 @@ import { hexToColorRef } from "../theme/colors";
 import { packThemeEditorFormat } from "../theme/apply";
 import type { ThemeDefinition } from "../theme/types";
 import {
-  applyCharFormatAll,
-  applyCharFormatSelection,
+  setCharFormatAll,
+  setCharFormatSelection,
   packTextColorFormat,
 } from "../win32/charformat";
 import { detectLanguageWithContent } from "./detect";
@@ -180,7 +180,7 @@ export class HighlightController {
   private applyBaseFormat(editor: Editor, theme: ThemeDefinition): void {
     const { buf, retain } = packThemeEditorFormat(theme);
     this.retain.push(buf, ...retain);
-    applyCharFormatAll(editor.hwnd, buf);
+    setCharFormatAll(editor.hwnd, buf);
   }
 
   private applyForegroundRange(
@@ -198,7 +198,7 @@ export class HighlightController {
     const hwnd = editor.hwnd;
 
     User32.SendMessageW(hwnd, EM_SETSEL, BigInt(start), BigInt(end));
-    applyCharFormatSelection(hwnd, buf);
+    setCharFormatSelection(hwnd, buf);
   }
 
   private applyTokens(
@@ -239,7 +239,7 @@ export class HighlightController {
         BigInt(token.start),
         BigInt(token.end),
       );
-      applyCharFormatSelection(hwnd, format);
+      setCharFormatSelection(hwnd, format);
     }
 
     User32.SendMessageW(hwnd, EM_SETSEL, BigInt(savedStart), BigInt(savedEnd));

@@ -3,39 +3,39 @@
   "name": "Nord",
   "ui": {
     "background": "#2e3440",
-    "foreground": "#eceff4",
+    "foreground": "#ffffff",
     "accent": "#88c0d0",
     "border": "#434c5e",
     "menuBar": {
       "background": "#2e3440",
-      "foreground": "#eceff4",
+      "foreground": "#ffffff",
       "hover": "#434c5e",
       "active": "#88c0d0"
     },
     "statusBar": {
       "background": "#3b4252",
-      "foreground": "#eceff4",
+      "foreground": "#ffffff",
       "accent": "#88c0d0"
     }
   },
   "editor": {
     "background": "#2e3440",
-    "foreground": "#eceff4",
+    "foreground": "#ffffff",
     "selectionBackground": "#434c5e",
-    "selectionForeground": "#eceff4",
-    "caret": "#eceff4",
+    "selectionForeground": "#ffffff",
+    "caret": "#ffffff",
     "fontFamily": "Cascadia Code",
     "fontSize": 14
   },
   "chrome": { "darkTitleBar": true },
   "tokens": {
-    "comment": "#7b88a1",
+    "comment": "#8be9fd",
     "string": "#a3be8c",
     "keyword": "#81a1c1",
     "number": "#b48ead",
     "type": "#8fbcbb",
-    "function": "#88c0d0",
+    "function": "#50fa7b",
     "operator": "#81a1c1",
-    "punctuation": "#eceff4"
+    "punctuation": "#ffffff"
   }
 }

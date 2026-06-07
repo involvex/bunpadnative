@@ -35,7 +35,7 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier . --write",
     "format:check": "prettier . --check",
-    "verify": "bun run typecheck && bun run lint:fix && bun run format && bun run test:menu && bun run test:document && bun run test:editor && bun run test:highlight && bun run test:charformat && bun run test:cli && bun run test:smoke && bun run test:plugins && bun run test:extensions",
+    "verify": "bun run typecheck && bun run lint:fix && bun run format && bun run test:menu && bun run test:document && bun run test:editor && bun run test:highlight && bun run test:charformat && bun run test:charformat-integration && bun run test:contrast && bun run test:cli && bun run test:smoke && bun run test:plugins && bun run test:extensions",
     "test:smoke": "bun run scripts/smoke-test.ts",
     "test:plugins": "bun run scripts/plugin-test.ts",
     "test:extensions": "bun run scripts/extension-test.ts",
@@ -45,6 +45,8 @@
     "test:highlight": "bun run scripts/highlight-test.ts",
     "test:cli": "bun run scripts/cli-test.ts",
     "test:charformat": "bun run scripts/charformat-test.ts",
+    "test:charformat-integration": "bun run scripts/charformat-integration-test.ts",
+    "test:contrast": "bun run scripts/contrast-test.ts",
     "build": "bun run scripts/build.ts",
     "prebuild": "bun run verify"
   },

@@ -3,39 +3,39 @@
   "name": "Dracula",
   "ui": {
     "background": "#282a36",
-    "foreground": "#f8f8f2",
+    "foreground": "#ffffff",
     "accent": "#bd93f9",
     "border": "#44475a",
     "menuBar": {
       "background": "#282a36",
-      "foreground": "#f8f8f2",
+      "foreground": "#ffffff",
       "hover": "#44475a",
       "active": "#bd93f9"
     },
     "statusBar": {
       "background": "#21222c",
-      "foreground": "#f8f8f2",
+      "foreground": "#ffffff",
       "accent": "#bd93f9"
     }
   },
   "editor": {
     "background": "#282a36",
-    "foreground": "#f8f8f2",
+    "foreground": "#ffffff",
     "selectionBackground": "#44475a",
-    "selectionForeground": "#f8f8f2",
-    "caret": "#f8f8f2",
+    "selectionForeground": "#ffffff",
+    "caret": "#ffffff",
     "fontFamily": "Cascadia Code",
     "fontSize": 14
   },
   "chrome": { "darkTitleBar": true },
   "tokens": {
-    "comment": "#6272a4",
+    "comment": "#8be9fd",
     "string": "#f1fa8c",
     "keyword": "#ff79c6",
     "number": "#bd93f9",
     "type": "#8be9fd",
     "function": "#50fa7b",
     "operator": "#ff79c6",
-    "punctuation": "#f8f8f2"
+    "punctuation": "#ffffff"
   }
 }

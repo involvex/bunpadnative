@@ -18,11 +18,16 @@ export class VscodeBridge {
     document: VscodeTextDocument;
   }>();
 
-  bind(editor: Editor, document: Document, messageParent: bigint): void {
+  bind(
+    editor: Editor,
+    document: Document,
+    messageParent: bigint,
+    onAfterWrite?: () => void,
+  ): void {
     this.editor = editor;
     this.document = document;
     this.messageParent = messageParent;
-    this.vscodeDocument = createTextDocument(document, editor);
+    this.vscodeDocument = createTextDocument(document, editor, onAfterWrite);
     this.vscodeEditor = new VscodeTextEditor(this.vscodeDocument, editor);
   }
 

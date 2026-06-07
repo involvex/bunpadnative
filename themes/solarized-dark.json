@@ -3,39 +3,39 @@
   "name": "Solarized Dark",
   "ui": {
     "background": "#002b36",
-    "foreground": "#839496",
+    "foreground": "#ffffff",
     "accent": "#268bd2",
     "border": "#073642",
     "menuBar": {
       "background": "#002b36",
-      "foreground": "#93a1a1",
+      "foreground": "#ffffff",
       "hover": "#073642",
       "active": "#268bd2"
     },
     "statusBar": {
       "background": "#073642",
-      "foreground": "#93a1a1",
+      "foreground": "#ffffff",
       "accent": "#268bd2"
     }
   },
   "editor": {
     "background": "#002b36",
-    "foreground": "#93a1a1",
+    "foreground": "#ffffff",
     "selectionBackground": "#073642",
-    "selectionForeground": "#93a1a1",
-    "caret": "#93a1a1",
+    "selectionForeground": "#ffffff",
+    "caret": "#ffffff",
     "fontFamily": "Cascadia Code",
     "fontSize": 14
   },
   "chrome": { "darkTitleBar": true },
   "tokens": {
-    "comment": "#586e75",
+    "comment": "#8be9fd",
     "string": "#2aa198",
     "keyword": "#859900",
     "number": "#d33682",
     "type": "#b58900",
-    "function": "#268bd2",
-    "operator": "#93a1a1",
-    "punctuation": "#839496"
+    "function": "#50fa7b",
+    "operator": "#ffffff",
+    "punctuation": "#ffffff"
   }
 }

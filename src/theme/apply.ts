@@ -1,7 +1,7 @@
 import User32 from "@bun-win32/user32";
 
 import type { Editor } from "../app/editor";
-import { applyCharFormatAll, packEditorCharFormat } from "../win32/charformat";
+import { setCharFormatAll, packEditorCharFormat } from "../win32/charformat";
 import { createFont, createSolidBrush, deleteGdiObject } from "../win32/gdi32";
 import { setDarkTitleBar, setPreferredDarkMode } from "../win32/dwm";
 import { fontSizeToHeight, hexToColorRef } from "./colors";
@@ -73,7 +73,7 @@ export const applyTheme = (
       BigInt(hexToColorRef(theme.editor.background)),
     );
     User32.SendMessageW(editorHwnd, WM_SETFONT, resources.font, 1n);
-    applyCharFormatAll(editorHwnd, buf);
+    setCharFormatAll(editorHwnd, buf);
     return;
   }
 

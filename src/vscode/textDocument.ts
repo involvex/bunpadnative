@@ -156,12 +156,16 @@ export class VscodeTextDocument {
 export const createTextDocument = (
   document: Document,
   editor: Editor,
+  onAfterWrite?: () => void,
 ): VscodeTextDocument => {
   const uri = Uri.file(document.path ?? "untitled:Untitled-1");
   return new VscodeTextDocument(
     uri,
     () => editor.getText(),
-    (text) => editor.setText(text),
+    (text) => {
+      editor.setText(text);
+      onAfterWrite?.();
+    },
     () => document.path,
   );
 };

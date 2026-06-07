@@ -8,6 +8,7 @@ export class EditorContextImpl implements EditorContext {
     private readonly editor: Editor,
     private readonly document: Document,
     private readonly toast: (message: string) => void,
+    private readonly onTextMutated?: () => void,
   ) {}
 
   getText(): string {
@@ -16,6 +17,7 @@ export class EditorContextImpl implements EditorContext {
 
   setText(text: string): void {
     this.editor.setText(text);
+    this.onTextMutated?.();
   }
 
   getCursorPosition(): number {

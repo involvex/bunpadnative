@@ -3,14 +3,14 @@
  * Run: bun run scripts/charformat-test.ts
  */
 import {
-  CHARFORMAT2_SIZE,
+  CHARFORMAT_SIZE,
   packEditorCharFormat,
   packTextColorFormat,
 } from "../src/win32/charformat";
 import { hexToColorRef } from "../src/theme/colors";
 
-if (CHARFORMAT2_SIZE < 92) {
-  throw new Error("CHARFORMAT2_SIZE too small");
+if (CHARFORMAT_SIZE !== 92) {
+  throw new Error("CHARFORMAT_SIZE must be 92 for RichEdit on Windows");
 }
 
 const theme = packEditorCharFormat(
@@ -18,7 +18,7 @@ const theme = packEditorCharFormat(
   14,
   "Cascadia Code",
 );
-if (theme.buf.readUInt32LE(0) !== CHARFORMAT2_SIZE) {
+if (theme.buf.readUInt32LE(0) !== CHARFORMAT_SIZE) {
   throw new Error("cbSize not written");
 }
 

@@ -3,39 +3,39 @@
   "name": "Dark",
   "ui": {
     "background": "#1e1e1e",
-    "foreground": "#d4d4d4",
-    "accent": "#569cd6",
+    "foreground": "#ffffff",
+    "accent": "#66d9ff",
     "border": "#3c3c3c",
     "menuBar": {
       "background": "#1e1e1e",
-      "foreground": "#cccccc",
+      "foreground": "#ffffff",
       "hover": "#3c3c3c",
-      "active": "#569cd6"
+      "active": "#66d9ff"
     },
     "statusBar": {
       "background": "#252526",
-      "foreground": "#858585",
-      "accent": "#569cd6"
+      "foreground": "#ffffff",
+      "accent": "#66d9ff"
     }
   },
   "editor": {
     "background": "#1e1e1e",
-    "foreground": "#d4d4d4",
+    "foreground": "#ffffff",
     "selectionBackground": "#264f78",
     "selectionForeground": "#ffffff",
-    "caret": "#aeafad",
+    "caret": "#ffffff",
     "fontFamily": "Cascadia Code",
     "fontSize": 14
   },
   "chrome": { "darkTitleBar": true },
   "tokens": {
-    "comment": "#6a9955",
-    "string": "#ce9178",
-    "keyword": "#569cd6",
-    "number": "#b5cea8",
-    "type": "#4ec9b0",
-    "function": "#dcdcaa",
-    "operator": "#d4d4d4",
-    "punctuation": "#b0b0b0"
+    "comment": "#8be9fd",
+    "string": "#f1fa8c",
+    "keyword": "#66d9ff",
+    "number": "#bd93f9",
+    "type": "#8be9fd",
+    "function": "#50fa7b",
+    "operator": "#ffffff",
+    "punctuation": "#f8f8f2"
   }
 }

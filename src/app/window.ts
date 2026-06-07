@@ -354,7 +354,9 @@ export class MainWindow {
       this.document.path,
     );
     this.editorContext = this.buildEditorContext();
-    vscodeBridge.bind(this.editor, this.document, this.hwnd);
+    vscodeBridge.bind(this.editor, this.document, this.hwnd, () =>
+      this.applyEditorFormatting(true),
+    );
     this.layoutClient(parentHwnd);
     this.raiseChrome();
     this.applyCurrentTheme();
@@ -470,8 +472,11 @@ export class MainWindow {
   }
 
   private buildEditorContext(): EditorContextImpl {
-    return new EditorContextImpl(this.editor!, this.document, (message) =>
-      this.showInfo(message),
+    return new EditorContextImpl(
+      this.editor!,
+      this.document,
+      (message) => this.showInfo(message),
+      () => this.applyEditorFormatting(true),
     );
   }
 
@@ -654,6 +659,7 @@ export class MainWindow {
     const count = editor.replaceAll(dialog.find, dialog.replace);
     if (count === 0) {
       if (editor.replaceOne(dialog.find, dialog.replace)) {
+        this.applyEditorFormatting(true);
         this.showInfo("Replaced 1 occurrence.");
         return;
       }
@@ -661,6 +667,7 @@ export class MainWindow {
       return;
     }
 
+    this.applyEditorFormatting(true);
     this.showInfo(`Replaced ${count} occurrence(s).`);
   }
 
@@ -931,7 +938,9 @@ export class MainWindow {
 
     const count = await this.extensionHost.loadAll();
     if (this.editor && this.document) {
-      vscodeBridge.bind(this.editor, this.document, this.hwnd);
+      vscodeBridge.bind(this.editor, this.document, this.hwnd, () =>
+        this.applyEditorFormatting(true),
+      );
     }
     await this.extensionHost.activateStartup();
     this.showInfo(
