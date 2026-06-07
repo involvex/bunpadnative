@@ -33,7 +33,7 @@ Hooks: Implement a lifecycle system (e.g., onEditorReady, onBeforeSave, onTextCh
 Phase 4: VSCode Extension Compatibility Layer (Days 7-10)
 Candor check: You cannot support 100% of VSCode extensions (especially those relying on complex WebViews or heavy Node.js-specific native modules). However, you can support Text Manipulation and Snippet extensions.
 
-The "Shim" Concept: VSCode extensions start with import * as vscode from 'vscode'. You need to create a mock vscode module in your project.
+The "Shim" Concept: VSCode extensions start with import \* as vscode from 'vscode'. You need to create a mock vscode module in your project.
 
 Polyfilling the API:
 
