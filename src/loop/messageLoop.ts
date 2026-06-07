@@ -1,5 +1,7 @@
 import User32, { PeekMessageRemoveFlag } from "@bun-win32/user32";
 
+import { ffiPtr } from "../win32/pointers";
+
 /** MSG structure is 48 bytes on x64. */
 const MSG_SIZE = 48;
 
@@ -13,15 +15,15 @@ const dispatchMessage = (msg: Buffer, ctx?: MessagePumpContext): void => {
     const translated = User32.TranslateAcceleratorW(
       ctx.hwnd,
       ctx.hAccel,
-      msg.ptr!,
+      ffiPtr(msg),
     );
     if (translated !== 0) {
       return;
     }
   }
 
-  User32.TranslateMessage(msg.ptr!);
-  User32.DispatchMessageW(msg.ptr!);
+  User32.TranslateMessage(ffiPtr(msg));
+  User32.DispatchMessageW(ffiPtr(msg));
 };
 
 /** Drain the Win32 queue without blocking Bun's async event loop. */
@@ -34,7 +36,7 @@ export async function runMessagePump(
   while (shouldRun()) {
     while (
       User32.PeekMessageW(
-        msg.ptr!,
+        ffiPtr(msg),
         0n,
         0,
         0,
@@ -54,7 +56,7 @@ export const pumpOnce = (ctx?: MessagePumpContext): void => {
 
   while (
     User32.PeekMessageW(
-      msg.ptr!,
+      ffiPtr(msg),
       0n,
       0,
       0,

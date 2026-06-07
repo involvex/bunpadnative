@@ -1,0 +1,31 @@
+{
+  "id": "nord",
+  "name": "Nord",
+  "ui": {
+    "background": "#2e3440",
+    "foreground": "#eceff4",
+    "accent": "#88c0d0",
+    "border": "#434c5e",
+    "menuBar": {
+      "background": "#3b4252",
+      "foreground": "#eceff4",
+      "hover": "#434c5e",
+      "active": "#88c0d0"
+    },
+    "statusBar": {
+      "background": "#3b4252",
+      "foreground": "#d8dee9",
+      "accent": "#88c0d0"
+    }
+  },
+  "editor": {
+    "background": "#2e3440",
+    "foreground": "#eceff4",
+    "selectionBackground": "#434c5e",
+    "selectionForeground": "#eceff4",
+    "caret": "#eceff4",
+    "fontFamily": "Cascadia Code",
+    "fontSize": 14
+  },
+  "chrome": { "darkTitleBar": true }
+}

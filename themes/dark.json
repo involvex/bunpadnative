@@ -1,0 +1,31 @@
+{
+  "id": "dark",
+  "name": "Dark",
+  "ui": {
+    "background": "#1e1e1e",
+    "foreground": "#d4d4d4",
+    "accent": "#569cd6",
+    "border": "#3c3c3c",
+    "menuBar": {
+      "background": "#252526",
+      "foreground": "#cccccc",
+      "hover": "#3c3c3c",
+      "active": "#569cd6"
+    },
+    "statusBar": {
+      "background": "#252526",
+      "foreground": "#858585",
+      "accent": "#569cd6"
+    }
+  },
+  "editor": {
+    "background": "#1e1e1e",
+    "foreground": "#d4d4d4",
+    "selectionBackground": "#264f78",
+    "selectionForeground": "#ffffff",
+    "caret": "#aeafad",
+    "fontFamily": "Cascadia Code",
+    "fontSize": 14
+  },
+  "chrome": { "darkTitleBar": true }
+}

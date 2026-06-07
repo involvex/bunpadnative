@@ -1,0 +1,31 @@
+{
+  "id": "light",
+  "name": "Light",
+  "ui": {
+    "background": "#ffffff",
+    "foreground": "#1e1e1e",
+    "accent": "#0078d4",
+    "border": "#e5e5e5",
+    "menuBar": {
+      "background": "#f3f3f3",
+      "foreground": "#1e1e1e",
+      "hover": "#e5e5e5",
+      "active": "#0078d4"
+    },
+    "statusBar": {
+      "background": "#f3f3f3",
+      "foreground": "#616161",
+      "accent": "#0078d4"
+    }
+  },
+  "editor": {
+    "background": "#ffffff",
+    "foreground": "#1e1e1e",
+    "selectionBackground": "#add6ff",
+    "selectionForeground": "#1e1e1e",
+    "caret": "#1e1e1e",
+    "fontFamily": "Cascadia Code",
+    "fontSize": 14
+  },
+  "chrome": { "darkTitleBar": false }
+}

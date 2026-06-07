@@ -1,6 +1,9 @@
 import User32 from "@bun-win32/user32";
 
-import { encodeWide } from "../win32/strings";
+import type { ExtensionCommand } from "../extensions/host";
+import { ExtensionMenuCommand } from "../extensions/host";
+import type { ThemeSummary } from "../theme/types";
+import { encodeWide, ffiPtr } from "../win32/strings";
 
 /** Win32 menu item flags (not exported by @bun-win32/user32). */
 const MF_STRING = 0x0000;
@@ -22,12 +25,17 @@ export enum MenuCommand {
   FileExit = 1005,
   EditSelectAll = 1101,
   PluginsReload = 1201,
+  ThemeCommandBase = 1300,
+  ViewReloadThemes = 1398,
+  ViewOpenThemesFolder = 1399,
 }
 
-export type AppMenu = {
-  menuBar: bigint;
+export type AppMenus = {
+  fileMenu: bigint;
+  editMenu: bigint;
+  viewMenu: bigint;
+  pluginsMenu: bigint;
   accelTable: bigint;
-  /** Retain wide-string buffers for menu labels. */
   retain: Buffer[];
 };
 
@@ -43,8 +51,11 @@ const packAccel = (
   buf.writeUInt16LE(command, offset + 4);
 };
 
-/** Build File/Edit/Plugins menu bar and keyboard accelerator table. */
-export const createAppMenu = (): AppMenu => {
+/** Build popup menus and keyboard accelerator table for the custom menu bar. */
+export const createAppMenus = (
+  themes: ThemeSummary[],
+  extensions: ExtensionCommand[] = [],
+): AppMenus => {
   const retain: Buffer[] = [];
 
   const label = (text: string): Buffer => {
@@ -55,10 +66,11 @@ export const createAppMenu = (): AppMenu => {
 
   const fileMenu = User32.CreateMenu();
   const editMenu = User32.CreateMenu();
+  const viewMenu = User32.CreateMenu();
+  const themeMenu = User32.CreateMenu();
   const pluginsMenu = User32.CreateMenu();
-  const menuBar = User32.CreateMenu();
 
-  if (!fileMenu || !editMenu || !pluginsMenu || !menuBar) {
+  if (!fileMenu || !editMenu || !viewMenu || !themeMenu || !pluginsMenu) {
     throw new Error("CreateMenu failed");
   }
 
@@ -66,66 +78,98 @@ export const createAppMenu = (): AppMenu => {
     fileMenu,
     MF_STRING,
     BigInt(MenuCommand.FileNew),
-    label("&New").ptr!,
+    ffiPtr(label("&New")),
   );
   User32.AppendMenuW(
     fileMenu,
     MF_STRING,
     BigInt(MenuCommand.FileOpen),
-    label("&Open...").ptr!,
+    ffiPtr(label("&Open...")),
   );
   User32.AppendMenuW(
     fileMenu,
     MF_STRING,
     BigInt(MenuCommand.FileSave),
-    label("&Save").ptr!,
+    ffiPtr(label("&Save")),
   );
   User32.AppendMenuW(
     fileMenu,
     MF_STRING,
     BigInt(MenuCommand.FileSaveAs),
-    label("Save &As...").ptr!,
+    ffiPtr(label("Save &As...")),
   );
   User32.AppendMenuW(fileMenu, MF_SEPARATOR, 0n, null);
   User32.AppendMenuW(
     fileMenu,
     MF_STRING,
     BigInt(MenuCommand.FileExit),
-    label("E&xit").ptr!,
+    ffiPtr(label("E&xit")),
   );
 
   User32.AppendMenuW(
     editMenu,
     MF_STRING,
     BigInt(MenuCommand.EditSelectAll),
-    label("Select &All").ptr!,
+    ffiPtr(label("Select &All")),
+  );
+
+  let command = MenuCommand.ThemeCommandBase;
+  for (const theme of themes) {
+    if (command > MenuCommand.ViewReloadThemes - 1) {
+      break;
+    }
+    User32.AppendMenuW(
+      themeMenu,
+      MF_STRING,
+      BigInt(command),
+      ffiPtr(label(theme.name)),
+    );
+    command += 1;
+  }
+
+  User32.AppendMenuW(
+    viewMenu,
+    MF_POPUP,
+    themeMenu,
+    ffiPtr(label("&Theme")),
+  );
+  User32.AppendMenuW(
+    viewMenu,
+    MF_STRING,
+    BigInt(MenuCommand.ViewReloadThemes),
+    ffiPtr(label("&Reload Themes")),
+  );
+  User32.AppendMenuW(
+    viewMenu,
+    MF_STRING,
+    BigInt(MenuCommand.ViewOpenThemesFolder),
+    ffiPtr(label("&Open Themes Folder...")),
   );
 
   User32.AppendMenuW(
     pluginsMenu,
     MF_STRING,
     BigInt(MenuCommand.PluginsReload),
-    label("&Reload Plugins").ptr!,
+    ffiPtr(label("&Reload BunPad Plugins")),
+  );
+  User32.AppendMenuW(
+    pluginsMenu,
+    MF_STRING,
+    BigInt(ExtensionMenuCommand.Reload),
+    ffiPtr(label("&Reload VS Code Extensions")),
   );
 
-  User32.AppendMenuW(
-    menuBar,
-    MF_POPUP,
-    fileMenu,
-    label("&File").ptr!,
-  );
-  User32.AppendMenuW(
-    menuBar,
-    MF_POPUP,
-    editMenu,
-    label("&Edit").ptr!,
-  );
-  User32.AppendMenuW(
-    menuBar,
-    MF_POPUP,
-    pluginsMenu,
-    label("&Plugins").ptr!,
-  );
+  if (extensions.length > 0) {
+    User32.AppendMenuW(pluginsMenu, MF_SEPARATOR, 0n, null);
+    for (const extension of extensions) {
+      User32.AppendMenuW(
+        pluginsMenu,
+        MF_STRING,
+        BigInt(extension.menuCommandId),
+        ffiPtr(label(extension.title)),
+      );
+    }
+  }
 
   const accelBuf = Buffer.alloc(ACCEL_SIZE * 4);
   packAccel(accelBuf, 0, 0x4e, MenuCommand.FileNew);
@@ -133,12 +177,19 @@ export const createAppMenu = (): AppMenu => {
   packAccel(accelBuf, 2, 0x53, MenuCommand.FileSave);
   packAccel(accelBuf, 3, 0x41, MenuCommand.EditSelectAll);
 
-  const accelTable = User32.CreateAcceleratorTableW(accelBuf.ptr!, 4);
+  const accelTable = User32.CreateAcceleratorTableW(ffiPtr(accelBuf), 4);
   if (!accelTable) {
     throw new Error("CreateAcceleratorTableW failed");
   }
 
   retain.push(accelBuf);
 
-  return { menuBar, accelTable, retain };
+  return {
+    fileMenu,
+    editMenu,
+    viewMenu,
+    pluginsMenu,
+    accelTable,
+    retain,
+  };
 };

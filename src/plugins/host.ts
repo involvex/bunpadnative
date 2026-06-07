@@ -114,4 +114,18 @@ export class PluginHost {
 
     return current;
   }
+
+  async emitThemeChange(ctx: EditorContextImpl): Promise<void> {
+    for (const { id, plugin } of this.loaded) {
+      if (!plugin.onThemeChange) {
+        continue;
+      }
+
+      try {
+        await plugin.onThemeChange(ctx);
+      } catch (error) {
+        console.error(`[plugins] ${id} onThemeChange failed:`, error);
+      }
+    }
+  }
 }

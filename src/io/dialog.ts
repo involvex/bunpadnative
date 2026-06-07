@@ -1,6 +1,7 @@
 import Comdlg32, { OpenFileNameFlag } from "@bun-win32/comdlg32";
 
-import { encodeWide } from "../win32/strings";
+import { encodeWide, ffiPtr } from "../win32/strings";
+import { pointerToBigInt } from "../win32/pointers";
 
 const OPENFILENAMEW_SIZE = 152;
 const PATH_BUF_CHARS = 1024;
@@ -30,22 +31,22 @@ const packOpenFileName = (
 
   view.setUint32(0x00, OPENFILENAMEW_SIZE, true);
   view.setBigUint64(0x08, owner, true);
-  view.setBigUint64(0x18, BigInt(TEXT_FILTER.ptr!), true);
+  view.setBigUint64(0x18, pointerToBigInt(TEXT_FILTER), true);
   view.setUint32(0x2c, 1, true);
-  view.setBigUint64(0x30, BigInt(fileBuf.ptr!), true);
+  view.setBigUint64(0x30, pointerToBigInt(fileBuf), true);
   view.setUint32(0x38, PATH_BUF_CHARS, true);
-  view.setBigUint64(0x40, BigInt(fileTitleBuf.ptr!), true);
+  view.setBigUint64(0x40, pointerToBigInt(fileTitleBuf), true);
   view.setUint32(0x48, TITLE_BUF_CHARS, true);
 
   if (initialDir) {
-    view.setBigUint64(0x50, BigInt(initialDir.ptr!), true);
+    view.setBigUint64(0x50, pointerToBigInt(initialDir), true);
   }
 
-  view.setBigUint64(0x58, BigInt(title.ptr!), true);
+  view.setBigUint64(0x58, pointerToBigInt(title), true);
   view.setUint32(0x60, flags, true);
 
   const defExt = encodeWide("txt");
-  view.setBigUint64(0x68, BigInt(defExt.ptr!), true);
+  view.setBigUint64(0x68, pointerToBigInt(defExt), true);
 
   return ofn;
 };
@@ -77,7 +78,7 @@ export const showOpenDialog = (
       OpenFileNameFlag.OFN_HIDEREADONLY,
   );
 
-  if (!Comdlg32.GetOpenFileNameW(ofn.ptr!)) {
+  if (!Comdlg32.GetOpenFileNameW(ffiPtr(ofn))) {
     return null;
   }
 
@@ -109,7 +110,7 @@ export const showSaveDialog = (
     initialPath ?? undefined,
   );
 
-  if (!Comdlg32.GetSaveFileNameW(ofn.ptr!)) {
+  if (!Comdlg32.GetSaveFileNameW(ffiPtr(ofn))) {
     return null;
   }
 

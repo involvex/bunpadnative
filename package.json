@@ -7,13 +7,16 @@
     "dev": "bun run src/index.ts",
     "typecheck": "tsc --noEmit",
     "test:smoke": "bun run scripts/smoke-test.ts",
-    "test:plugins": "bun run scripts/plugin-test.ts"
+    "test:plugins": "bun run scripts/plugin-test.ts",
+    "test:extensions": "bun run scripts/extension-test.ts",
+    "build": "bun run scripts/build.ts"
   },
   "dependencies": {
     "@bun-win32/comdlg32": "^1.0.0",
     "@bun-win32/core": "^1.1.2",
     "@bun-win32/kernel32": "^1.0.25",
-    "@bun-win32/user32": "^3.0.21"
+    "@bun-win32/user32": "^3.0.21",
+    "vscode": "file:./vscode-shim"
   },
   "devDependencies": {
     "@types/bun": "latest",
@@ -21,5 +24,8 @@
   },
   "engines": {
     "bun": ">=1.1.0"
+  },
+  "imports": {
+    "vscode": "./src/vscode/index.ts"
   }
 }

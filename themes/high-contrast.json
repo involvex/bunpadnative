@@ -1,0 +1,31 @@
+{
+  "id": "high-contrast",
+  "name": "High Contrast",
+  "ui": {
+    "background": "#000000",
+    "foreground": "#ffffff",
+    "accent": "#ffff00",
+    "border": "#ffffff",
+    "menuBar": {
+      "background": "#000000",
+      "foreground": "#ffffff",
+      "hover": "#1a1a1a",
+      "active": "#ffff00"
+    },
+    "statusBar": {
+      "background": "#000000",
+      "foreground": "#ffffff",
+      "accent": "#ffff00"
+    }
+  },
+  "editor": {
+    "background": "#000000",
+    "foreground": "#ffffff",
+    "selectionBackground": "#ffffff",
+    "selectionForeground": "#000000",
+    "caret": "#ffff00",
+    "fontFamily": "Consolas",
+    "fontSize": 16
+  },
+  "chrome": { "darkTitleBar": true }
+}

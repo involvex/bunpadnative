@@ -1,0 +1,31 @@
+{
+  "id": "dracula",
+  "name": "Dracula",
+  "ui": {
+    "background": "#282a36",
+    "foreground": "#f8f8f2",
+    "accent": "#bd93f9",
+    "border": "#44475a",
+    "menuBar": {
+      "background": "#21222c",
+      "foreground": "#f8f8f2",
+      "hover": "#44475a",
+      "active": "#bd93f9"
+    },
+    "statusBar": {
+      "background": "#21222c",
+      "foreground": "#6272a4",
+      "accent": "#bd93f9"
+    }
+  },
+  "editor": {
+    "background": "#282a36",
+    "foreground": "#f8f8f2",
+    "selectionBackground": "#44475a",
+    "selectionForeground": "#f8f8f2",
+    "caret": "#f8f8f2",
+    "fontFamily": "Cascadia Code",
+    "fontSize": 14
+  },
+  "chrome": { "darkTitleBar": true }
+}

@@ -1,0 +1,31 @@
+{
+  "id": "solarized-dark",
+  "name": "Solarized Dark",
+  "ui": {
+    "background": "#002b36",
+    "foreground": "#839496",
+    "accent": "#268bd2",
+    "border": "#073642",
+    "menuBar": {
+      "background": "#073642",
+      "foreground": "#93a1a1",
+      "hover": "#094352",
+      "active": "#268bd2"
+    },
+    "statusBar": {
+      "background": "#073642",
+      "foreground": "#586e75",
+      "accent": "#268bd2"
+    }
+  },
+  "editor": {
+    "background": "#002b36",
+    "foreground": "#839496",
+    "selectionBackground": "#073642",
+    "selectionForeground": "#93a1a1",
+    "caret": "#93a1a1",
+    "fontFamily": "Cascadia Code",
+    "fontSize": 14
+  },
+  "chrome": { "darkTitleBar": true }
+}

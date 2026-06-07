@@ -13,6 +13,7 @@ export type PluginHooks = {
   onEditorReady?(ctx: EditorContext): void | Promise<void>;
   onBeforeSave?(ctx: EditorContext): string | void | Promise<string | void>;
   onTextChange?(ctx: EditorContext): void | Promise<void>;
+  onThemeChange?(ctx: EditorContext): void | Promise<void>;
 };
 
 /** Default export shape for files in plugins/. */

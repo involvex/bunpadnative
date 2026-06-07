@@ -14,7 +14,7 @@
 - Editor uses `RICHEDIT50W` after `LoadLibraryW(Msftedit.dll)`; falls back to `EDIT` if load fails.
 - FFI structs (`WNDCLASSEXW` 80 bytes, `MSG` 48 bytes, `OPENFILENAMEW` 152 bytes) are manually packed Buffers; package types them as Pointer only.
 - Hold strong refs to `JSCallback` WndProc and wide-string buffers on window instances (GC crashes Win32).
-- Phases 1–3 implemented (window, file I/O/menus/dialogs, plugin API in `plugins/`); Phase 4 VSCode shim and Phase 5 compile packaging not started.
-- Next planned work is Phase 3.5 full UI theming (JSON themes in `themes/` and `%APPDATA%/BunPad/themes/`) before Phase 4.
+- Phases 1–4 implemented (window, file I/O/menus/dialogs, plugin API, VSCode shim); Phase 5 compile packaging via `bun run build` → `dist/bunpad.exe`.
+- Packaged exe resolves assets from its directory (`themes/`, `plugins/`, `extensions/`, `vscode-shim/`); use `ffiPtr()` / `pointerToBigInt()` for FFI buffers in compiled builds (Buffer `.ptr` polyfill may be absent).
 - Dependencies installed from npm; `file:../bun-win32` links fail due to `workspace:*` in those packages.
 - Remote repo: https://github.com/involvex/bunpadnative.git

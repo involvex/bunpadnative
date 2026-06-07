@@ -1,0 +1,10 @@
+{
+  "name": "vscode",
+  "version": "1.85.0-bunpad",
+  "description": "BunPad VS Code API compatibility shim",
+  "type": "module",
+  "main": "./index.ts",
+  "exports": {
+    ".": "./index.ts"
+  }
+}
