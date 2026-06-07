@@ -12,7 +12,7 @@ win.onClose = () => {
   running = false;
 };
 
-console.log("BunPad Native — Phase 1");
+console.log("BunPad Native — Phase 2");
 
-await runMessagePump(() => running);
+await runMessagePump(() => running, win.pumpContext);
 win.destroy();

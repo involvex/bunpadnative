@@ -5,6 +5,10 @@ export const CW_USEDEFAULT = 0x8000_0000;
 
 /** Frame window messages not present on MessageFilter enum. */
 export const WM_CLOSE = 0x0010;
+export const WM_COMMAND = 0x0111;
+
+/** EDIT/RICHEDIT notification codes (HIWORD of WM_COMMAND wParam). */
+export const EN_CHANGE = 0x0300;
 
 /** WNDCLASSEXW.style — redraw client area on horizontal/vertical resize. */
 export const CS_HREDRAW = 0x0002;

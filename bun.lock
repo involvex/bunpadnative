@@ -5,6 +5,7 @@
     "": {
       "name": "bunpad-native",
       "dependencies": {
+        "@bun-win32/comdlg32": "^1.0.0",
         "@bun-win32/core": "^1.1.2",
         "@bun-win32/kernel32": "^1.0.25",
         "@bun-win32/user32": "^3.0.21",
@@ -16,6 +17,8 @@
     },
   },
   "packages": {
+    "@bun-win32/comdlg32": ["@bun-win32/comdlg32@1.0.0", "", { "dependencies": { "@bun-win32/core": "1.1.2" }, "peerDependencies": { "typescript": "^5" } }, "sha512-0eOxYMytQpshvbBRBOnGYaGucy8Kx03Xfe+UxeXJWGeveQybT/iUbGlln6Nsbvm3mGE29LQP9AWMYW5J7Up8aw=="],
+
     "@bun-win32/core": ["@bun-win32/core@1.1.2", "", { "peerDependencies": { "typescript": "^5" } }, "sha512-chLnrvvWCgKARdkZ7b89/GfNyjl6H7dsAvtccviiSdT6q+xxHxYQfJPsFYGbphQO5NU1UJhSS1UhELJDXHjiNA=="],
 
     "@bun-win32/kernel32": ["@bun-win32/kernel32@1.0.25", "", { "dependencies": { "@bun-win32/core": "1.1.2" }, "peerDependencies": { "typescript": "^5" } }, "sha512-+mgp/SDyY1ghYQoX+sTH+ht5RpYnVJDcj1bEefwHCWSZ26q8zDjTC34/PtEOonREVwj7or/ZKpAqgAHOzbWYMg=="],

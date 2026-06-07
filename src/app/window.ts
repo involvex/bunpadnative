@@ -1,21 +1,29 @@
 import Kernel32 from "@bun-win32/kernel32";
 import User32, {
   MessageFilter,
+  MessageBoxType,
   ShowWindowCommand,
   WindowStyles,
 } from "@bun-win32/user32";
 import { JSCallback } from "bun:ffi";
 import type { Pointer } from "bun:ffi";
 
+import { Document } from "./document";
+import { Editor } from "./editor";
+import { createAppMenu, MenuCommand, type AppMenu } from "./menu";
+import { showOpenDialog, showSaveDialog } from "../io/dialog";
+import type { MessagePumpContext } from "../loop/messageLoop";
 import {
   CS_HREDRAW,
   CS_VREDRAW,
   CW_USEDEFAULT,
   EDITOR_STYLE_FLAGS,
   EDITOR_WINDOW_STYLES,
+  EN_CHANGE,
   FALLBACK_EDIT_CLASS,
   RICHEDIT_CLASS,
   WM_CLOSE,
+  WM_COMMAND,
 } from "../win32/constants";
 import { encodeWide } from "../win32/strings";
 import { packWndClassEx } from "../win32/wndclass";
@@ -34,7 +42,7 @@ export class MainWindow {
   private readonly classNameBuf = encodeWide(
     `BunPadMain_${process.pid}`,
   );
-  private readonly titleBuf: Buffer;
+  private titleBuf: Buffer;
   private readonly editorClassBuf: Buffer;
   private readonly wndProc: JSCallback;
   private readonly wndClassBuf: Buffer;
@@ -44,6 +52,10 @@ export class MainWindow {
   private editorHwnd = 0n;
   private destroyed = false;
   private readonly useRichEdit: boolean;
+  private readonly menu: AppMenu;
+
+  readonly document = new Document();
+  editor: Editor | null = null;
 
   onClose?: () => void;
 
@@ -114,8 +126,14 @@ export class MainWindow {
       throw new Error("CreateWindowExW failed");
     }
 
+    this.editor = new Editor(this.editorHwnd);
+    this.menu = createAppMenu();
+    User32.SetMenu(this.hwnd, this.menu.menuBar);
+    User32.DrawMenuBar(this.hwnd);
+
     User32.ShowWindow(this.hwnd, ShowWindowCommand.SW_SHOW);
     User32.UpdateWindow(this.hwnd);
+    this.refreshTitle();
   }
 
   static create(options: MainWindowOptions = {}): MainWindow {
@@ -128,6 +146,10 @@ export class MainWindow {
 
   get editorHandle(): bigint {
     return this.editorHwnd;
+  }
+
+  get pumpContext(): MessagePumpContext {
+    return { hwnd: this.hwnd, hAccel: this.menu.accelTable };
   }
 
   private handleMessage(
@@ -145,11 +167,31 @@ export class MainWindow {
         this.resizeEditor(hWnd);
         return 0n;
 
+      case WM_COMMAND: {
+        const notifyCode = Number((wParam >> 16n) & 0xffffn);
+        const commandId = Number(wParam & 0xffffn);
+
+        if (notifyCode === EN_CHANGE && lParam === this.editorHwnd) {
+          this.document.markDirty();
+          this.refreshTitle();
+          return 0n;
+        }
+
+        if (notifyCode === 0) {
+          void this.dispatchCommand(commandId);
+        }
+
+        return 0n;
+      }
+
       case WM_CLOSE:
         User32.DestroyWindow(hWnd);
         return 0n;
 
       case MessageFilter.WM_DESTROY:
+        this.hwnd = 0n;
+        this.editorHwnd = 0n;
+        this.editor = null;
         this.onClose?.();
         User32.PostQuitMessage(0);
         return 0n;
@@ -185,10 +227,10 @@ export class MainWindow {
       );
     }
 
+    this.editor = new Editor(this.editorHwnd);
     this.resizeEditor(parentHwnd);
   }
 
-  /** Fit editor to parent client rect (WM_SIZE / WM_CREATE). */
   private resizeEditor(parentHwnd: bigint): void {
     if (!this.editorHwnd) {
       return;
@@ -204,11 +246,110 @@ export class MainWindow {
     User32.MoveWindow(this.editorHwnd, 0, 0, width, height, 1);
   }
 
+  private refreshTitle(): void {
+    const dirtyMark = this.document.dirty ? " *" : "";
+    this.titleBuf = encodeWide(
+      `${this.document.displayName()}${dirtyMark} — BunPad`,
+    );
+    User32.SetWindowTextW(this.hwnd, this.titleBuf.ptr!);
+  }
+
+  private showError(message: string): void {
+    const text = encodeWide(message);
+    const caption = encodeWide("BunPad");
+    User32.MessageBoxW(
+      this.hwnd,
+      text.ptr!,
+      caption.ptr!,
+      MessageBoxType.MB_OK | MessageBoxType.MB_ICONERROR,
+    );
+  }
+
+  private async dispatchCommand(commandId: number): Promise<void> {
+    const editor = this.editor;
+    if (!editor) {
+      return;
+    }
+
+    try {
+      switch (commandId) {
+        case MenuCommand.FileNew:
+          editor.setText("");
+          this.document.reset();
+          this.refreshTitle();
+          break;
+
+        case MenuCommand.FileOpen:
+          await this.openFile();
+          break;
+
+        case MenuCommand.FileSave:
+          await this.saveFile(false);
+          break;
+
+        case MenuCommand.FileSaveAs:
+          await this.saveFile(true);
+          break;
+
+        case MenuCommand.FileExit:
+          User32.PostMessageW(this.hwnd, WM_CLOSE, 0n, 0n);
+          break;
+
+        case MenuCommand.EditSelectAll:
+          editor.selectAll();
+          break;
+
+        default:
+          break;
+      }
+    } catch (error) {
+      this.showError(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  private async openFile(): Promise<void> {
+    const editor = this.editor;
+    if (!editor) {
+      return;
+    }
+
+    const path = showOpenDialog(this.hwnd, this.document.path);
+    if (!path) {
+      return;
+    }
+
+    const text = await this.document.readFromDisk(path);
+    editor.setText(text);
+    this.refreshTitle();
+  }
+
+  private async saveFile(saveAs: boolean): Promise<void> {
+    const editor = this.editor;
+    if (!editor) {
+      return;
+    }
+
+    let path = this.document.path;
+    if (saveAs || !path) {
+      path = showSaveDialog(this.hwnd, path);
+      if (!path) {
+        return;
+      }
+    }
+
+    await this.document.writeToDisk(path, editor.getText());
+    this.refreshTitle();
+  }
+
   destroy(): void {
     if (this.destroyed) {
       return;
     }
     this.destroyed = true;
+
+    if (this.menu.accelTable) {
+      User32.DestroyAcceleratorTable(this.menu.accelTable);
+    }
 
     if (this.hwnd) {
       User32.DestroyWindow(this.hwnd);
@@ -216,6 +357,7 @@ export class MainWindow {
     }
 
     this.editorHwnd = 0n;
+    this.editor = null;
     User32.UnregisterClassW(this.classNameBuf.ptr!, NULL);
     this.wndProc.close();
 
