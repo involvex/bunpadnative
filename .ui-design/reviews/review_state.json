@@ -1,0 +1,15 @@
+{
+  "review_id": "editor-theme_20250607",
+  "target": "editor-theme-contrast",
+  "focus_areas": ["visual", "usability", "code"],
+  "context": "code-editor",
+  "platform": "desktop",
+  "status": "complete",
+  "issues_found": 5,
+  "severity_counts": {
+    "critical": 2,
+    "major": 2,
+    "minor": 0,
+    "suggestion": 1
+  }
+}
