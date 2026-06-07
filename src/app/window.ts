@@ -111,6 +111,8 @@ export class MainWindow {
   private closing = false;
   private readonly highlighter = new HighlightController();
   private pendingInitialFile: string | undefined;
+  /** Skip EN_CHANGE dirty marking during programmatic editor updates. */
+  private suppressEditorDirty = 0;
 
   readonly document = new Document();
   editor: Editor | null = null;
@@ -298,14 +300,17 @@ export class MainWindow {
         const commandId = Number(wParam & 0xffffn);
 
         if (notifyCode === EN_CHANGE && lParam === this.editorHwnd) {
-          this.document.markDirty();
-          this.refreshTitle();
-          this.refreshStatus();
-          if (this.editorContext && this.pluginHost) {
-            this.pluginHost.scheduleTextChange(this.editorContext);
+          const trackDirty = this.suppressEditorDirty === 0;
+          if (trackDirty && this.editor) {
+            this.document.syncDirtyFromText(this.editor.getText());
+            this.refreshTitle();
+            this.refreshStatus();
+            if (this.editorContext && this.pluginHost) {
+              this.pluginHost.scheduleTextChange(this.editorContext);
+            }
+            vscodeBridge.notifyDocumentChanged();
+            this.scheduleHighlight();
           }
-          vscodeBridge.notifyDocumentChanged();
-          this.scheduleHighlight();
           return 0n;
         }
 
@@ -381,6 +386,10 @@ export class MainWindow {
     this.layoutClient(parentHwnd);
     this.raiseChrome();
     this.applyCurrentTheme();
+    if (this.editor) {
+      this.document.setBaseline(this.editor.getText());
+    }
+    this.refreshTitle();
     this.refreshStatus();
     void this.pluginHost?.activateAll(this.editorContext);
     void this.extensionHost?.activateStartup();
@@ -449,7 +458,19 @@ export class MainWindow {
     this.menuBar?.setTheme(theme);
     this.statusBar?.setTheme(theme);
     this.refreshStatus();
-    this.applyEditorFormatting(true);
+    this.runWithoutDirtyTracking(() => {
+      this.applyEditorFormatting(true);
+    });
+  }
+
+  /** Run editor updates without treating RichEdit EN_CHANGE as user edits. */
+  private runWithoutDirtyTracking(action: () => void): void {
+    this.suppressEditorDirty++;
+    try {
+      action();
+    } finally {
+      this.suppressEditorDirty--;
+    }
   }
 
   /** Re-apply RichEdit colors/font after WM_SETTEXT resets character formatting. */
@@ -610,7 +631,7 @@ export class MainWindow {
   }
 
   private async handleCloseRequest(): Promise<void> {
-    if (!this.document.dirty) {
+    if (!this.document.dirty || process.env.BUNPAD_TEST === "1") {
       this.closing = true;
       User32.DestroyWindow(this.hwnd);
       return;
@@ -752,12 +773,17 @@ export class MainWindow {
           if (!(await this.confirmDiscardChanges())) {
             break;
           }
-          editor.setText("");
           this.document.reset();
           this.highlighter.setLanguageFromPath(null);
+          this.runWithoutDirtyTracking(() => {
+            editor.setText("");
+            this.applyEditorFormatting(true);
+          });
+          if (this.editor) {
+            this.document.setBaseline(this.editor.getText());
+          }
           this.refreshTitle();
           this.refreshStatus();
-          this.applyEditorFormatting(true);
           break;
 
         case MenuCommand.FileOpen:
@@ -912,12 +938,15 @@ export class MainWindow {
     const text = await this.document.readFromDisk(path);
     this.highlighter.setLanguageFromPath(path, text);
     this.highlighter.cancel();
-    editor.setText(text);
+    this.runWithoutDirtyTracking(() => {
+      editor.setText(text);
+      this.applyEditorFormatting(true);
+    });
+    this.document.setBaseline(editor.getText());
     await this.settingsStore?.addRecentFile(path);
     this.refreshRecentMenu();
     this.refreshTitle();
     this.refreshStatus();
-    this.applyEditorFormatting(true);
   }
 
   private async saveFile(saveAs: boolean): Promise<boolean> {

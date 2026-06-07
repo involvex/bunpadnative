@@ -41,6 +41,22 @@ if (doc.utf8Bom) {
   throw new Error("Expected utf8Bom=false for plain file");
 }
 
+doc.setBaseline(plainText);
+doc.syncDirtyFromText(plainText);
+if (doc.dirty) {
+  throw new Error("Expected clean when editor matches baseline");
+}
+doc.syncDirtyFromText(`${plainText}!`);
+if (!doc.dirty) {
+  throw new Error("Expected dirty when editor differs from baseline");
+}
+
+doc.setBaseline("line one\nline two");
+doc.syncDirtyFromText("line one\r\nline two");
+if (doc.dirty) {
+  throw new Error("Expected CRLF/LF normalization to match baseline");
+}
+
 const settings = new SettingsStore(settingsPath);
 await settings.load();
 await settings.addRecentFile("C:\\alpha.txt");

@@ -14,6 +14,8 @@ import { ThemeController } from "../src/theme/controller";
 import { ThemeManager } from "../src/theme/manager";
 import { WM_CLOSE } from "../src/win32/constants";
 
+process.env.BUNPAD_TEST = "1";
+
 const settings = new SettingsStore(
   join(process.cwd(), ".tmp-settings-smoke.json"),
 );
@@ -52,6 +54,7 @@ for (let i = 0; i < 5; i += 1) {
 }
 
 win.editor?.setText("BunPad Phase 6 smoke test");
+win.document.setBaseline(win.editor?.getText() ?? "");
 pumpOnce(ctx);
 
 const readBack = win.editor?.getText() ?? "";

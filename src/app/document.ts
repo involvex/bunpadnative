@@ -1,11 +1,16 @@
 const UTF8_BOM = "\uFEFF";
 
+/** Normalize line endings for dirty comparison (RichEdit uses CRLF). */
+export const normalizeEditorText = (text: string): string =>
+  text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
 /** In-memory document metadata for open/save flows. */
 export class Document {
   path: string | null = null;
   dirty = false;
   /** True when the file was loaded with a UTF-8 BOM (preserved on save). */
   utf8Bom = false;
+  private baselineText = "";
 
   markClean(): void {
     this.dirty = false;
@@ -15,10 +20,22 @@ export class Document {
     this.dirty = true;
   }
 
+  /** Record saved/on-disk text; editor matching this baseline is not dirty. */
+  setBaseline(text: string): void {
+    this.baselineText = text;
+    this.dirty = false;
+  }
+
+  /** Recompute dirty from live editor text (handles deferred EN_CHANGE). */
+  syncDirtyFromText(text: string): void {
+    this.dirty =
+      normalizeEditorText(text) !== normalizeEditorText(this.baselineText);
+  }
+
   reset(): void {
     this.path = null;
-    this.dirty = false;
     this.utf8Bom = false;
+    this.setBaseline("");
   }
 
   async readFromDisk(filePath: string): Promise<string> {
@@ -39,7 +56,6 @@ export class Document {
     }
 
     this.path = filePath;
-    this.dirty = false;
     return text;
   }
 
@@ -47,7 +63,7 @@ export class Document {
     const payload = this.utf8Bom ? UTF8_BOM + text : text;
     await Bun.write(filePath, payload);
     this.path = filePath;
-    this.dirty = false;
+    this.setBaseline(text);
   }
 
   displayName(): string {

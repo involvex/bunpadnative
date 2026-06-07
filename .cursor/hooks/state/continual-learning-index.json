@@ -2,14 +2,29 @@
   "version": 1,
   "transcripts": {
     "C:\\Users\\lukas\\.cursor\\projects\\d-repos-bunpadnative\\agent-transcripts\\75c56734-c115-42f2-a295-d179089b8496\\75c56734-c115-42f2-a295-d179089b8496.jsonl": {
-      "mtimeMs": 1780813881174,
-      "mtimeIso": "2026-06-07T06:31:21.174Z",
-      "processedAt": "2026-06-07T06:35:00.000Z"
+      "mtimeMs": 1780874204135,
+      "mtimeIso": "2026-06-07T23:16:44.135Z",
+      "processedAt": "2026-06-08T00:00:00.000Z"
+    },
+    "C:\\Users\\lukas\\.cursor\\projects\\d-repos-bunpadnative\\agent-transcripts\\75c56734-c115-42f2-a295-d179089b8496\\subagents\\17cdef4e-6f1f-42b8-975b-dd61d464cdf6.jsonl": {
+      "mtimeMs": 1780813945935,
+      "mtimeIso": "2026-06-07T06:32:25.935Z",
+      "processedAt": "2026-06-08T00:00:00.000Z"
+    },
+    "C:\\Users\\lukas\\.cursor\\projects\\d-repos-bunpadnative\\agent-transcripts\\75c56734-c115-42f2-a295-d179089b8496\\subagents\\409ba351-b252-4aac-aaf5-5d7b7d4eec61.jsonl": {
+      "mtimeMs": 1780857627409,
+      "mtimeIso": "2026-06-07T18:40:27.409Z",
+      "processedAt": "2026-06-08T00:00:00.000Z"
     },
     "C:\\Users\\lukas\\.cursor\\projects\\d-repos-bunpadnative\\agent-transcripts\\75c56734-c115-42f2-a295-d179089b8496\\subagents\\670bb946-8458-4e6c-8952-d7d7b8aaff2a.jsonl": {
       "mtimeMs": 1780809638229,
       "mtimeIso": "2026-06-07T05:20:38.229Z",
-      "processedAt": "2026-06-07T06:35:00.000Z"
+      "processedAt": "2026-06-08T00:00:00.000Z"
+    },
+    "C:\\Users\\lukas\\.cursor\\projects\\d-repos-bunpadnative\\agent-transcripts\\75c56734-c115-42f2-a295-d179089b8496\\subagents\\e0c583db-8496-416b-ae49-1fb3fa02a59f.jsonl": {
+      "mtimeMs": 1780874217922,
+      "mtimeIso": "2026-06-07T23:16:57.922Z",
+      "processedAt": "2026-06-08T00:00:00.000Z"
     }
   }
 }
