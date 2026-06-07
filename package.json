@@ -1,0 +1,23 @@
+{
+  "name": "bunpad-native",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test:smoke": "bun run scripts/smoke-test.ts"
+  },
+  "dependencies": {
+    "@bun-win32/core": "^1.1.2",
+    "@bun-win32/kernel32": "^1.0.25",
+    "@bun-win32/user32": "^3.0.21"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5"
+  },
+  "engines": {
+    "bun": ">=1.1.0"
+  }
+}
