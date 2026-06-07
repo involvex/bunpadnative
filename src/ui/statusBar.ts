@@ -8,6 +8,7 @@ import {
   createFont,
   createSolidBrush,
   deleteGdiObject,
+  measureTextWidth,
   selectObject,
   setBkModeTransparent,
   setTextColor,
@@ -155,7 +156,7 @@ export class StatusBar {
     textOutW(hdc, 12, 4, left, this.leftText.length);
 
     const clientWidth = rect.readInt32LE(8) - rect.readInt32LE(0);
-    const rightWidth = this.rightText.length * 7;
+    const rightWidth = measureTextWidth(hdc, this.rightText);
     textOutW(
       hdc,
       Math.max(12, clientWidth - rightWidth - 12),

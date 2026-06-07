@@ -1,13 +1,20 @@
 /\*\*
 
-- Interactive menu verification checklist.
+- Interactive menu and editor UX verification checklist.
 -
-- Automated: bun run test:menu
+- Automated:
+- - bun run test:menu
+- - bun run test:document
+- - bun run test:editor
+-
 - Manual steps after bun run dev:
-- 1.  Click File — dropdown shows New, Open, Save, Save As, Exit
-- 2.  Click View → Theme — nested theme list appears
-- 3.  Click Edit → Select All highlights all editor text
-- 4.  Ctrl+N / Ctrl+O / Ctrl+S / Ctrl+A accelerators fire matching commands
-- 5.  Hover menu items — highlight tracks pointer; active item stays lit while open
+- 1.  Edit text — title and status bar show dirty marker (\*)
+- 2.  File → Exit with unsaved changes — save/discard/cancel prompt appears
+- 3.  File → New with unsaved changes — same prompt before clearing
+- 4.  File → Recent Files — lists recently opened paths
+- 5.  Edit → Find (Ctrl+F) / Replace (Ctrl+H) — native dialog opens
+- 6.  Edit → Undo/Redo/Cut/Copy/Paste — clipboard and undo work
+- 7.  Right-click editor — context menu with undo/cut/copy/paste/select all
+- 8.  Ctrl+Z / Ctrl+Y / Ctrl+X / Ctrl+C / Ctrl+V accelerators fire
       \*/
       export {};

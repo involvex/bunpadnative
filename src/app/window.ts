@@ -10,7 +10,23 @@ import type { Pointer } from "bun:ffi";
 
 import { Document } from "./document";
 import { Editor } from "./editor";
-import { createAppMenus, MenuCommand, type AppMenus } from "./menu";
+import { trackContextMenuCommand } from "./editorContextMenu";
+import {
+  HighlightController,
+  INCREMENTAL_THRESHOLD,
+} from "../highlight/controller";
+import { languageLabel } from "../highlight/languages";
+import type { LanguageMode } from "../highlight/types";
+import {
+  createAppMenus,
+  languageModeForCommand,
+  MenuCommand,
+  populateRecentMenu,
+  recentPathForCommand,
+  type AppMenus,
+} from "./menu";
+import type { SettingsStore } from "./settings";
+import { showInputDialog, showReplaceDialog } from "../io/inputDialog";
 import { showOpenDialog, showSaveDialog } from "../io/dialog";
 import type { MessagePumpContext } from "../loop/messageLoop";
 import { EditorContextImpl } from "../plugins/context";
@@ -35,8 +51,11 @@ import {
   WM_COMMAND,
 } from "../win32/constants";
 import {
+  HWND_TOP,
   MENU_BAR_HEIGHT,
   STATUS_BAR_HEIGHT,
+  SWP_NOMOVE,
+  SWP_NOSIZE,
   WM_CTLCOLOREDIT,
 } from "../win32/layout";
 import { setTextColor } from "../win32/gdi32";
@@ -46,6 +65,9 @@ import { packWndClassEx } from "../win32/wndclass";
 const NULL = 0n;
 const NULL_PTR = null as unknown as Pointer;
 
+const WM_PARENTNOTIFY = 0x0210;
+const WM_RBUTTONDOWN = 0x0204;
+
 export type MainWindowOptions = {
   title?: string;
   width?: number;
@@ -53,6 +75,8 @@ export type MainWindowOptions = {
   pluginHost?: PluginHost;
   themeController?: ThemeController;
   extensionHost?: ExtensionHost;
+  settingsStore?: SettingsStore;
+  initialFile?: string;
 };
 
 export class MainWindow {
@@ -72,9 +96,16 @@ export class MainWindow {
   private readonly pluginHost?: PluginHost;
   private readonly extensionHost?: ExtensionHost;
   private readonly themeController?: ThemeController;
+  private readonly settingsStore?: SettingsStore;
   private editorContext: EditorContextImpl | null = null;
   private menuBar: MenuBar | null = null;
   private statusBar: StatusBar | null = null;
+  private lastFindNeedle = "";
+  private lastReplaceNeedle = "";
+  private lastReplaceWith = "";
+  private closing = false;
+  private readonly highlighter = new HighlightController();
+  private pendingInitialFile: string | undefined;
 
   readonly document = new Document();
   editor: Editor | null = null;
@@ -87,6 +118,8 @@ export class MainWindow {
     this.pluginHost = options.pluginHost;
     this.extensionHost = options.extensionHost;
     this.themeController = options.themeController;
+    this.settingsStore = options.settingsStore;
+    this.pendingInitialFile = options.initialFile;
 
     this.msfteditModule = Kernel32.LoadLibraryW(
       ffiPtr(encodeWide("Msftedit.dll")),
@@ -125,6 +158,18 @@ export class MainWindow {
     const width = options.width ?? 1024;
     const height = options.height ?? 768;
 
+    if (!options.themeController) {
+      throw new Error("ThemeController is required");
+    }
+
+    const theme = options.themeController.current();
+
+    this.menus = createAppMenus(
+      options.themeController.manager.summaries,
+      options.settingsStore?.recentFiles ?? [],
+      options.extensionHost?.contributedCommands ?? [],
+    );
+
     this.hwnd = User32.CreateWindowExW(
       0,
       ffiPtr(this.classNameBuf),
@@ -149,16 +194,6 @@ export class MainWindow {
       throw new Error("CreateWindowExW failed");
     }
 
-    if (!options.themeController) {
-      throw new Error("ThemeController is required");
-    }
-
-    const theme = options.themeController.current();
-
-    this.menus = createAppMenus(
-      options.themeController.manager.summaries,
-      options.extensionHost?.contributedCommands ?? [],
-    );
     this.menuBar = new MenuBar(
       this.hwnd,
       [
@@ -176,6 +211,8 @@ export class MainWindow {
 
     this.statusBar = new StatusBar(this.hwnd, theme);
     this.statusBar.create();
+
+    this.layoutClient(this.hwnd);
 
     User32.ShowWindow(this.hwnd, ShowWindowCommand.SW_SHOW);
     User32.UpdateWindow(this.hwnd);
@@ -212,14 +249,24 @@ export class MainWindow {
 
       case MessageFilter.WM_SIZE:
         this.layoutClient(hWnd);
+        this.raiseChrome();
         return 0n;
 
+      case WM_PARENTNOTIFY: {
+        const event = Number(wParam & 0xffffn);
+        if (event === WM_RBUTTONDOWN && lParam === this.editorHwnd) {
+          const point = Buffer.alloc(8);
+          User32.GetCursorPos(ffiPtr(point));
+          this.showEditorContextMenu(
+            point.readInt32LE(0),
+            point.readInt32LE(4),
+          );
+        }
+        return 0n;
+      }
+
       case WM_CTLCOLOREDIT: {
-        if (
-          !this.useRichEdit &&
-          lParam === this.editorHwnd &&
-          this.themeController
-        ) {
+        if (lParam === this.editorHwnd && this.themeController) {
           setTextColor(
             wParam,
             hexToColorRef(this.themeController.current().editor.foreground),
@@ -241,6 +288,7 @@ export class MainWindow {
             this.pluginHost.scheduleTextChange(this.editorContext);
           }
           vscodeBridge.notifyDocumentChanged();
+          this.scheduleHighlight();
           return 0n;
         }
 
@@ -252,7 +300,11 @@ export class MainWindow {
       }
 
       case WM_CLOSE:
-        User32.DestroyWindow(hWnd);
+        if (this.closing) {
+          User32.DestroyWindow(hWnd);
+          return 0n;
+        }
+        void this.handleCloseRequest();
         return 0n;
 
       case MessageFilter.WM_DESTROY:
@@ -297,13 +349,32 @@ export class MainWindow {
     }
 
     this.editor = new Editor(this.editorHwnd);
+    this.highlighter.setLanguageMode(
+      this.settingsStore?.languageMode ?? "auto",
+      this.document.path,
+    );
     this.editorContext = this.buildEditorContext();
     vscodeBridge.bind(this.editor, this.document, this.hwnd);
     this.layoutClient(parentHwnd);
+    this.raiseChrome();
     this.applyCurrentTheme();
     this.refreshStatus();
     void this.pluginHost?.activateAll(this.editorContext);
     void this.extensionHost?.activateStartup();
+
+    if (this.pendingInitialFile) {
+      const path = this.pendingInitialFile;
+      this.pendingInitialFile = undefined;
+      void this.openStartupFile(path);
+    }
+  }
+
+  private async openStartupFile(path: string): Promise<void> {
+    try {
+      await this.loadFile(path);
+    } catch (error) {
+      this.showError(error instanceof Error ? error.message : String(error));
+    }
   }
 
   private layoutClient(parentHwnd: bigint): void {
@@ -335,7 +406,31 @@ export class MainWindow {
     this.statusBar?.resize(width, height - STATUS_BAR_HEIGHT);
   }
 
+  /** Keep menu bar and status bar above the editor child. */
+  private raiseChrome(): void {
+    const flags = SWP_NOMOVE | SWP_NOSIZE;
+    if (this.menuBar?.handle) {
+      User32.SetWindowPos(this.menuBar.handle, HWND_TOP, 0, 0, 0, 0, flags);
+    }
+    if (this.statusBar?.handle) {
+      User32.SetWindowPos(this.statusBar.handle, HWND_TOP, 0, 0, 0, 0, flags);
+    }
+  }
+
   private applyCurrentTheme(): void {
+    if (!this.themeController || !this.editor) {
+      return;
+    }
+
+    const theme = this.themeController.current();
+    this.menuBar?.setTheme(theme);
+    this.statusBar?.setTheme(theme);
+    this.refreshStatus();
+    this.applyEditorFormatting(true);
+  }
+
+  /** Re-apply RichEdit colors/font after WM_SETTEXT resets character formatting. */
+  private applyEditorFormatting(fullHighlight = true): void {
     if (!this.themeController || !this.editor) {
       return;
     }
@@ -346,10 +441,32 @@ export class MainWindow {
       this.useRichEdit,
     );
 
-    const theme = this.themeController.current();
-    this.menuBar?.setTheme(theme);
-    this.statusBar?.setTheme(theme);
-    this.refreshStatus();
+    if (this.useRichEdit) {
+      this.highlighter.applyHighlight(
+        this.editor,
+        this.themeController.current(),
+        { full: fullHighlight },
+      );
+    }
+  }
+
+  private scheduleHighlight(): void {
+    if (!this.editor || !this.themeController) {
+      return;
+    }
+
+    const textLength = this.editor.getText().length;
+    const editLine =
+      textLength > INCREMENTAL_THRESHOLD
+        ? this.highlighter.editLineFromEditor(this.editor)
+        : undefined;
+
+    this.highlighter.schedule(
+      this.editor,
+      this.themeController.current(),
+      this.useRichEdit,
+      editLine,
+    );
   }
 
   private buildEditorContext(): EditorContextImpl {
@@ -375,9 +492,14 @@ export class MainWindow {
     this.statusBar.setLeft(`${this.document.displayName()}${dirtyMark}`);
 
     const themeName = this.themeController?.current().name ?? "";
+    const mode = this.settingsStore?.languageMode ?? "auto";
+    const lang = languageLabel(this.highlighter.currentLanguage);
+    const langDisplay = mode === "auto" ? `${lang} (auto)` : lang;
     if (this.editor) {
       const { line, column } = this.editor.getLineColumn();
-      this.statusBar.setRight(`Ln ${line}, Col ${column}  |  ${themeName}`);
+      this.statusBar.setRight(
+        `Ln ${line}, Col ${column}  |  ${langDisplay}  |  ${themeName}`,
+      );
     } else {
       this.statusBar.setRight(themeName);
     }
@@ -405,6 +527,159 @@ export class MainWindow {
     );
   }
 
+  private showEditorContextMenu(screenX: number, screenY: number): void {
+    const commandId = trackContextMenuCommand(
+      this.menus.contextMenu,
+      this.hwnd,
+      screenX,
+      screenY,
+    );
+    if (commandId > 0) {
+      void this.dispatchCommand(commandId);
+    }
+  }
+
+  private promptUnsavedChanges(): "save" | "discard" | "cancel" {
+    const name = this.document.displayName();
+    const text = encodeWide(`Do you want to save changes to "${name}"?`);
+    const caption = encodeWide("BunPad");
+    const result = User32.MessageBoxW(
+      this.hwnd,
+      ffiPtr(text),
+      ffiPtr(caption),
+      MessageBoxType.MB_YESNOCANCEL | MessageBoxType.MB_ICONQUESTION,
+    );
+
+    if (result === 6) {
+      return "save";
+    }
+    if (result === 7) {
+      return "discard";
+    }
+    return "cancel";
+  }
+
+  private async confirmDiscardChanges(): Promise<boolean> {
+    if (!this.document.dirty) {
+      return true;
+    }
+
+    const action = this.promptUnsavedChanges();
+    if (action === "cancel") {
+      return false;
+    }
+    if (action === "discard") {
+      return true;
+    }
+
+    return this.saveFile(false);
+  }
+
+  private async handleCloseRequest(): Promise<void> {
+    if (!this.document.dirty) {
+      this.closing = true;
+      User32.DestroyWindow(this.hwnd);
+      return;
+    }
+
+    const action = this.promptUnsavedChanges();
+    if (action === "cancel") {
+      return;
+    }
+    if (action === "save") {
+      const saved = await this.saveFile(false);
+      if (!saved) {
+        return;
+      }
+    }
+
+    this.closing = true;
+    User32.DestroyWindow(this.hwnd);
+  }
+
+  private refreshRecentMenu(): void {
+    populateRecentMenu(
+      this.menus.recentMenu,
+      this.settingsStore?.recentFiles ?? [],
+      this.menus.retain,
+    );
+  }
+
+  private async findText(): Promise<void> {
+    const editor = this.editor;
+    if (!editor) {
+      return;
+    }
+
+    const needle = await showInputDialog(
+      this.hwnd,
+      "Find",
+      "Find what:",
+      this.lastFindNeedle,
+    );
+    if (needle === null) {
+      return;
+    }
+
+    this.lastFindNeedle = needle;
+    if (!editor.findNext(needle)) {
+      this.showInfo(`Cannot find "${needle}".`);
+    }
+  }
+
+  private async replaceText(): Promise<void> {
+    const editor = this.editor;
+    if (!editor) {
+      return;
+    }
+
+    const dialog = await showReplaceDialog(
+      this.hwnd,
+      this.lastReplaceNeedle || this.lastFindNeedle,
+      this.lastReplaceWith,
+    );
+    if (!dialog) {
+      return;
+    }
+
+    this.lastReplaceNeedle = dialog.find;
+    this.lastReplaceWith = dialog.replace;
+    this.lastFindNeedle = dialog.find;
+
+    if (!dialog.find) {
+      this.showInfo("Find what cannot be empty.");
+      return;
+    }
+
+    const count = editor.replaceAll(dialog.find, dialog.replace);
+    if (count === 0) {
+      if (editor.replaceOne(dialog.find, dialog.replace)) {
+        this.showInfo("Replaced 1 occurrence.");
+        return;
+      }
+      this.showInfo(`Cannot find "${dialog.find}".`);
+      return;
+    }
+
+    this.showInfo(`Replaced ${count} occurrence(s).`);
+  }
+
+  private async openRecentFile(commandId: number): Promise<void> {
+    const path = recentPathForCommand(
+      commandId,
+      this.settingsStore?.recentFiles ?? [],
+    );
+    if (!path) {
+      return;
+    }
+
+    if (!(await this.confirmDiscardChanges())) {
+      return;
+    }
+
+    await this.loadFile(path);
+  }
+
   private async dispatchCommand(commandId: number): Promise<void> {
     const editor = this.editor;
     if (!editor) {
@@ -412,6 +687,14 @@ export class MainWindow {
     }
 
     try {
+      if (
+        commandId >= MenuCommand.LanguageAuto &&
+        commandId <= MenuCommand.LanguageMarkdown
+      ) {
+        await this.selectLanguageMode(languageModeForCommand(commandId)!);
+        return;
+      }
+
       if (
         commandId >= MenuCommand.ThemeCommandBase &&
         commandId < MenuCommand.ViewReloadThemes
@@ -430,13 +713,21 @@ export class MainWindow {
 
       switch (commandId) {
         case MenuCommand.FileNew:
+          if (!(await this.confirmDiscardChanges())) {
+            break;
+          }
           editor.setText("");
           this.document.reset();
+          this.highlighter.setLanguageFromPath(null);
           this.refreshTitle();
           this.refreshStatus();
+          this.applyEditorFormatting(true);
           break;
 
         case MenuCommand.FileOpen:
+          if (!(await this.confirmDiscardChanges())) {
+            break;
+          }
           await this.openFile();
           break;
 
@@ -449,11 +740,44 @@ export class MainWindow {
           break;
 
         case MenuCommand.FileExit:
-          User32.PostMessageW(this.hwnd, WM_CLOSE, 0n, 0n);
+          void this.handleCloseRequest();
+          break;
+
+        case MenuCommand.EditUndo:
+          editor.undo();
+          break;
+
+        case MenuCommand.EditRedo:
+          editor.redo();
+          break;
+
+        case MenuCommand.EditCut:
+          editor.cut();
+          break;
+
+        case MenuCommand.EditCopy:
+          editor.copy();
+          break;
+
+        case MenuCommand.EditPaste:
+          editor.paste();
+          break;
+
+        case MenuCommand.EditFind:
+          await this.findText();
+          break;
+
+        case MenuCommand.EditReplace:
+          await this.replaceText();
           break;
 
         case MenuCommand.EditSelectAll:
           editor.selectAll();
+          break;
+
+        case MenuCommand.FileClearRecent:
+          await this.settingsStore?.clearRecentFiles();
+          this.refreshRecentMenu();
           break;
 
         case MenuCommand.PluginsReload:
@@ -473,11 +797,34 @@ export class MainWindow {
           break;
 
         default:
+          if (
+            commandId >= MenuCommand.FileRecentBase &&
+            commandId < MenuCommand.FileClearRecent
+          ) {
+            await this.openRecentFile(commandId);
+          }
           break;
       }
     } catch (error) {
       this.showError(error instanceof Error ? error.message : String(error));
     }
+  }
+
+  private async selectLanguageMode(mode: LanguageMode): Promise<void> {
+    if (!this.editor || !this.themeController) {
+      return;
+    }
+
+    await this.settingsStore?.setLanguageMode(mode);
+    this.highlighter.setLanguageMode(mode, this.document.path);
+    this.refreshStatus();
+    this.highlighter.applyHighlight(
+      this.editor,
+      this.themeController.current(),
+      {
+        full: true,
+      },
+    );
   }
 
   private async selectThemeByCommand(commandId: number): Promise<void> {
@@ -512,33 +859,42 @@ export class MainWindow {
   }
 
   private async openFile(): Promise<void> {
-    const editor = this.editor;
-    if (!editor) {
-      return;
-    }
-
     const path = showOpenDialog(this.hwnd, this.document.path);
     if (!path) {
       return;
     }
 
-    const text = await this.document.readFromDisk(path);
-    editor.setText(text);
-    this.refreshTitle();
-    this.refreshStatus();
+    await this.loadFile(path);
   }
 
-  private async saveFile(saveAs: boolean): Promise<void> {
+  private async loadFile(path: string): Promise<void> {
     const editor = this.editor;
     if (!editor) {
       return;
+    }
+
+    const text = await this.document.readFromDisk(path);
+    this.highlighter.setLanguageFromPath(path, text);
+    this.highlighter.cancel();
+    editor.setText(text);
+    await this.settingsStore?.addRecentFile(path);
+    this.refreshRecentMenu();
+    this.refreshTitle();
+    this.refreshStatus();
+    this.applyEditorFormatting(true);
+  }
+
+  private async saveFile(saveAs: boolean): Promise<boolean> {
+    const editor = this.editor;
+    if (!editor) {
+      return false;
     }
 
     let path = this.document.path;
     if (saveAs || !path) {
       path = showSaveDialog(this.hwnd, path);
       if (!path) {
-        return;
+        return false;
       }
     }
 
@@ -551,8 +907,11 @@ export class MainWindow {
           )
         : editor.getText(),
     );
+    await this.settingsStore?.addRecentFile(path);
+    this.refreshRecentMenu();
     this.refreshTitle();
     this.refreshStatus();
+    return true;
   }
 
   private async reloadPlugins(): Promise<void> {
@@ -587,6 +946,7 @@ export class MainWindow {
     this.destroyed = true;
 
     this.themeController?.destroy();
+    this.highlighter.cancel();
     this.menuBar?.destroy();
     this.statusBar?.destroy();
     this.menuBar = null;

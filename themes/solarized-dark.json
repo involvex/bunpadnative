@@ -7,25 +7,35 @@
     "accent": "#268bd2",
     "border": "#073642",
     "menuBar": {
-      "background": "#073642",
+      "background": "#002b36",
       "foreground": "#93a1a1",
-      "hover": "#094352",
+      "hover": "#073642",
       "active": "#268bd2"
     },
     "statusBar": {
       "background": "#073642",
-      "foreground": "#586e75",
+      "foreground": "#93a1a1",
       "accent": "#268bd2"
     }
   },
   "editor": {
     "background": "#002b36",
-    "foreground": "#839496",
+    "foreground": "#93a1a1",
     "selectionBackground": "#073642",
     "selectionForeground": "#93a1a1",
     "caret": "#93a1a1",
     "fontFamily": "Cascadia Code",
     "fontSize": 14
   },
-  "chrome": { "darkTitleBar": true }
+  "chrome": { "darkTitleBar": true },
+  "tokens": {
+    "comment": "#586e75",
+    "string": "#2aa198",
+    "keyword": "#859900",
+    "number": "#d33682",
+    "type": "#b58900",
+    "function": "#268bd2",
+    "operator": "#93a1a1",
+    "punctuation": "#839496"
+  }
 }

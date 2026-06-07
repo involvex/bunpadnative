@@ -19,14 +19,14 @@ src/
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Runtime | [Bun](https://bun.sh) >= 1.1 |
-| UI | Raw Win32 via `@bun-win32/user32`, `kernel32`, `comdlg32` |
-| Editor | `RICHEDIT50W` (Msftedit.dll) with `EDIT` fallback |
-| Language | TypeScript (strict, ESM) |
-| Linting | ESLint + Prettier |
-| Packaging | `bun build --compile` → single `.exe` |
+| Layer     | Technology                                                |
+| --------- | --------------------------------------------------------- |
+| Runtime   | [Bun](https://bun.sh) >= 1.1                              |
+| UI        | Raw Win32 via `@bun-win32/user32`, `kernel32`, `comdlg32` |
+| Editor    | `RICHEDIT50W` (Msftedit.dll) with `EDIT` fallback         |
+| Language  | TypeScript (strict, ESM)                                  |
+| Linting   | ESLint + Prettier                                         |
+| Packaging | `bun build --compile` → single `.exe`                     |
 
 ## Quick Start
 
@@ -43,19 +43,19 @@ bun run start
 
 ## Scripts
 
-| Command | Description |
-|---------|-------------|
-| `bun run dev` | Development mode with hot reload |
-| `bun run start` | Production run |
-| `bun run build` | Compile to `dist/bunpad.exe` |
-| `bun run verify` | Typecheck + lint + format + all tests |
-| `bun run typecheck` | TypeScript type checking |
-| `bun run lint` | ESLint check |
-| `bun run format` | Prettier formatting |
-| `bun run test:smoke` | Smoke tests |
-| `bun run test:plugins` | Plugin system tests |
-| `bun run test:extensions` | Extension host tests |
-| `bun run test:menu` | Menu system tests |
+| Command                   | Description                           |
+| ------------------------- | ------------------------------------- |
+| `bun run dev`             | Development mode with hot reload      |
+| `bun run start`           | Production run                        |
+| `bun run build`           | Compile to `dist/bunpad.exe`          |
+| `bun run verify`          | Typecheck + lint + format + all tests |
+| `bun run typecheck`       | TypeScript type checking              |
+| `bun run lint`            | ESLint check                          |
+| `bun run format`          | Prettier formatting                   |
+| `bun run test:smoke`      | Smoke tests                           |
+| `bun run test:plugins`    | Plugin system tests                   |
+| `bun run test:extensions` | Extension host tests                  |
+| `bun run test:menu`       | Menu system tests                     |
 
 ## Themes
 
@@ -70,8 +70,17 @@ Themes are JSON files in `themes/` with the structure:
     "foreground": "#d4d4d4",
     "accent": "#569cd6",
     "border": "#3c3c3c",
-    "menuBar": { "background": "#252526", "foreground": "#cccccc", "hover": "#3c3c3c", "active": "#569cd6" },
-    "statusBar": { "background": "#252526", "foreground": "#858585", "accent": "#569cd6" }
+    "menuBar": {
+      "background": "#252526",
+      "foreground": "#cccccc",
+      "hover": "#3c3c3c",
+      "active": "#569cd6"
+    },
+    "statusBar": {
+      "background": "#252526",
+      "foreground": "#858585",
+      "accent": "#569cd6"
+    }
   },
   "editor": {
     "background": "#1e1e1e",
@@ -96,9 +105,15 @@ import type { BunPadPlugin } from "../src/plugins/types";
 
 const plugin: BunPadPlugin = {
   name: "my-plugin",
-  onEditorReady(ctx) { /* ... */ },
-  onTextChange(ctx) { /* ... */ },
-  onBeforeSave(ctx) { /* ... */ },
+  onEditorReady(ctx) {
+    /* ... */
+  },
+  onTextChange(ctx) {
+    /* ... */
+  },
+  onBeforeSave(ctx) {
+    /* ... */
+  },
 };
 
 export default plugin;
@@ -106,12 +121,12 @@ export default plugin;
 
 ### Available Hooks
 
-| Hook | Fires when |
-|------|-----------|
+| Hook            | Fires when                    |
+| --------------- | ----------------------------- |
 | `onEditorReady` | Editor control is initialized |
-| `onTextChange` | Buffer content changes |
-| `onBeforeSave` | File is about to be written |
-| `onAfterSave` | File has been saved |
+| `onTextChange`  | Buffer content changes        |
+| `onBeforeSave`  | File is about to be written   |
+| `onAfterSave`   | File has been saved           |
 
 ### EditorContext API
 
@@ -126,12 +141,12 @@ BunPad supports a subset of VS Code extensions (text manipulation, snippets). Dr
 
 The compatibility shim maps:
 
-| VS Code API | BunPad Implementation |
-|-------------|----------------------|
-| `vscode.window.showInformationMessage` | `MessageBoxW` |
-| `vscode.workspace.fs` | Bun filesystem APIs |
-| `vscode.TextDocument` | RICHEDIT50W buffer |
-| `vscode.TextEditor` | Native editor commands |
+| VS Code API                            | BunPad Implementation  |
+| -------------------------------------- | ---------------------- |
+| `vscode.window.showInformationMessage` | `MessageBoxW`          |
+| `vscode.workspace.fs`                  | Bun filesystem APIs    |
+| `vscode.TextDocument`                  | RICHEDIT50W buffer     |
+| `vscode.TextEditor`                    | Native editor commands |
 
 ## Build & Packaging
 

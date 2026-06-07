@@ -6,6 +6,7 @@ import { join } from "node:path";
 
 import User32 from "@bun-win32/user32";
 
+import { SettingsStore } from "../src/app/settings";
 import { MainWindow } from "../src/app/window";
 import { pumpOnce } from "../src/loop/messageLoop";
 import { ExtensionHost } from "../src/extensions/host";
@@ -13,10 +14,15 @@ import { ThemeController } from "../src/theme/controller";
 import { ThemeManager } from "../src/theme/manager";
 import { WM_CLOSE } from "../src/win32/constants";
 
+const settings = new SettingsStore(
+  join(process.cwd(), ".tmp-settings-smoke.json"),
+);
+await settings.load();
+
 const themeManager = new ThemeManager(
   join(process.cwd(), "themes"),
   join(process.cwd(), ".tmp-themes"),
-  join(process.cwd(), ".tmp-settings.json"),
+  settings,
 );
 await themeManager.init();
 
@@ -31,6 +37,7 @@ const win = MainWindow.create({
   height: 480,
   themeController,
   extensionHost,
+  settingsStore: settings,
 });
 const ctx = win.pumpContext;
 
@@ -44,11 +51,11 @@ for (let i = 0; i < 5; i += 1) {
   await Bun.sleep(16);
 }
 
-win.editor?.setText("BunPad Phase 5 smoke test");
+win.editor?.setText("BunPad Phase 6 smoke test");
 pumpOnce(ctx);
 
 const readBack = win.editor?.getText() ?? "";
-if (!readBack.includes("BunPad Phase 5")) {
+if (!readBack.includes("BunPad Phase 6")) {
   throw new Error(`Unexpected editor text: ${readBack}`);
 }
 

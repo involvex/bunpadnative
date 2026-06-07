@@ -1,3 +1,5 @@
+import type { ThemeTokenColors } from "../highlight/types";
+
 export type ThemeColors = {
   background: string;
   foreground: string;
@@ -42,6 +44,7 @@ export type ThemeDefinition = {
   };
   editor: ThemeEditorColors;
   chrome: ThemeChrome;
+  tokens?: ThemeTokenColors;
 };
 
 export type ThemeSummary = {
@@ -49,6 +52,10 @@ export type ThemeSummary = {
   name: string;
 };
 
+import type { LanguageMode } from "../highlight/types";
+
 export type AppSettings = {
   theme: string;
+  recentFiles: string[];
+  languageMode?: LanguageMode;
 };

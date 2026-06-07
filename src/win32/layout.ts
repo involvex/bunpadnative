@@ -11,5 +11,10 @@ export const TPM_LEFTALIGN = 0x0000;
 export const TPM_TOPALIGN = 0x0000;
 export const TPM_VERTICAL = 0x0040;
 
+/** SetWindowPos flags / z-order helpers. */
+export const SWP_NOSIZE = 0x0001;
+export const SWP_NOMOVE = 0x0002;
+export const HWND_TOP = 0n;
+
 /** Custom message: defer popup menu until after mouse-down completes. */
 export const WM_OPENMENU = 0x0401;

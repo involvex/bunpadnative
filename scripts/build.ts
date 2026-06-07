@@ -50,6 +50,7 @@ await Promise.all([
   copyDir(join(root, "extensions"), join(dist, "extensions")),
   copyDir(join(root, "vscode-shim"), join(dist, "vscode-shim")),
   copyDir(join(root, "src/vscode"), join(dist, "src/vscode")),
+  copyDir(join(root, "src/win32"), join(dist, "src/win32")),
 ]);
 
 console.log(`[build] done: ${outfile}`);

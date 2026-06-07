@@ -27,5 +27,15 @@
     "fontFamily": "Cascadia Code",
     "fontSize": 14
   },
-  "chrome": { "darkTitleBar": false }
+  "chrome": { "darkTitleBar": false },
+  "tokens": {
+    "comment": "#008000",
+    "string": "#a31515",
+    "keyword": "#0000ff",
+    "number": "#098658",
+    "type": "#267f99",
+    "function": "#795e26",
+    "operator": "#1e1e1e",
+    "punctuation": "#1e1e1e"
+  }
 }

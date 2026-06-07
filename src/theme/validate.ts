@@ -30,11 +30,29 @@ export const parseTheme = (raw: unknown, source: string): ThemeDefinition => {
   const statusBar = ui.statusBar as Record<string, unknown>;
   const editor = theme.editor as Record<string, unknown>;
   const chrome = theme.chrome as Record<string, unknown>;
+  const tokensRaw = theme.tokens as Record<string, unknown> | undefined;
 
   const fontSize = editor.fontSize;
   if (typeof fontSize !== "number" || fontSize < 8 || fontSize > 72) {
     throw new Error(`Theme ${id} editor.fontSize must be 8-72`);
   }
+
+  const parseTokens = (): ThemeDefinition["tokens"] => {
+    if (!tokensRaw) {
+      return undefined;
+    }
+
+    return {
+      comment: requireHex(tokensRaw.comment, "tokens.comment"),
+      string: requireHex(tokensRaw.string, "tokens.string"),
+      keyword: requireHex(tokensRaw.keyword, "tokens.keyword"),
+      number: requireHex(tokensRaw.number, "tokens.number"),
+      type: requireHex(tokensRaw.type, "tokens.type"),
+      function: requireHex(tokensRaw.function, "tokens.function"),
+      operator: requireHex(tokensRaw.operator, "tokens.operator"),
+      punctuation: requireHex(tokensRaw.punctuation, "tokens.punctuation"),
+    };
+  };
 
   return {
     id,
@@ -77,5 +95,6 @@ export const parseTheme = (raw: unknown, source: string): ThemeDefinition => {
     chrome: {
       darkTitleBar: chrome.darkTitleBar === true,
     },
+    tokens: parseTokens(),
   };
 };

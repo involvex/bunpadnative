@@ -1,7 +1,8 @@
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { mkdir, readdir, readFile } from "node:fs/promises";
+import { join } from "node:path";
 
-import type { AppSettings, ThemeDefinition, ThemeSummary } from "./types";
+import type { SettingsStore } from "../app/settings";
+import type { ThemeDefinition, ThemeSummary } from "./types";
 import { parseTheme } from "./validate";
 
 const THEME_EXT = /\.json$/i;
@@ -16,7 +17,7 @@ export class ThemeManager {
   constructor(
     readonly builtinDir: string,
     readonly userDir: string,
-    readonly settingsPath: string,
+    private readonly settings: SettingsStore,
   ) {}
 
   get active(): ThemeDefinition {
@@ -41,7 +42,7 @@ export class ThemeManager {
     await mkdir(this.userDir, { recursive: true });
     await this.loadDirectory(this.builtinDir);
     await this.loadDirectory(this.userDir);
-    await this.loadSettings();
+    this.applyStoredTheme();
     this.rebuildCommandMap();
   }
 
@@ -59,12 +60,18 @@ export class ThemeManager {
     }
 
     this.activeId = id;
-    await this.saveSettings();
+    await this.settings.setTheme(id);
     return this.active;
   }
 
   userThemesFolder(): string {
     return this.userDir;
+  }
+
+  private applyStoredTheme(): void {
+    if (this.themes.has(this.settings.theme)) {
+      this.activeId = this.settings.theme;
+    }
   }
 
   private rebuildCommandMap(): void {
@@ -104,27 +111,5 @@ export class ThemeManager {
         console.warn(`[themes] skipping ${file}:`, error);
       }
     }
-  }
-
-  private async loadSettings(): Promise<void> {
-    try {
-      const raw = JSON.parse(
-        await readFile(this.settingsPath, "utf8"),
-      ) as AppSettings;
-      if (typeof raw.theme === "string" && this.themes.has(raw.theme)) {
-        this.activeId = raw.theme;
-      }
-    } catch {
-      // First run — keep default.
-    }
-  }
-
-  private async saveSettings(): Promise<void> {
-    await mkdir(dirname(this.settingsPath), { recursive: true });
-    const settings: AppSettings = { theme: this.activeId };
-    await writeFile(
-      this.settingsPath,
-      `${JSON.stringify(settings, null, 2)}\n`,
-    );
   }
 }

@@ -7,14 +7,14 @@
     "accent": "#88c0d0",
     "border": "#434c5e",
     "menuBar": {
-      "background": "#3b4252",
+      "background": "#2e3440",
       "foreground": "#eceff4",
       "hover": "#434c5e",
       "active": "#88c0d0"
     },
     "statusBar": {
       "background": "#3b4252",
-      "foreground": "#d8dee9",
+      "foreground": "#eceff4",
       "accent": "#88c0d0"
     }
   },
@@ -27,5 +27,15 @@
     "fontFamily": "Cascadia Code",
     "fontSize": 14
   },
-  "chrome": { "darkTitleBar": true }
+  "chrome": { "darkTitleBar": true },
+  "tokens": {
+    "comment": "#7b88a1",
+    "string": "#a3be8c",
+    "keyword": "#81a1c1",
+    "number": "#b48ead",
+    "type": "#8fbcbb",
+    "function": "#88c0d0",
+    "operator": "#81a1c1",
+    "punctuation": "#eceff4"
+  }
 }

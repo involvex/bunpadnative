@@ -103,6 +103,13 @@ export type FontOptions = {
   weight?: number;
 };
 
+const DEFAULT_CHARSET = 1;
+const OUT_DEFAULT_PRECIS = 0;
+const CLIP_DEFAULT_PRECIS = 0;
+const CLEARTYPE_QUALITY = 5;
+/** FF_MODERN | FIXED_PITCH */
+const FIXED_PITCH_FAMILY = 0x31;
+
 export const createFont = (options: FontOptions): bigint => {
   const face = encodeWide(options.faceName);
   return gdi.symbols.CreateFontW(
@@ -114,11 +121,11 @@ export const createFont = (options: FontOptions): bigint => {
     0,
     0,
     0,
-    0,
-    0,
-    0,
-    0,
-    0,
+    DEFAULT_CHARSET,
+    OUT_DEFAULT_PRECIS,
+    CLIP_DEFAULT_PRECIS,
+    CLEARTYPE_QUALITY,
+    FIXED_PITCH_FAMILY,
     ffiPtr(face),
   );
 };
