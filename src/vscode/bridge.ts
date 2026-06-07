@@ -1,7 +1,7 @@
 import type { Document } from "../app/document";
 import type { Editor } from "../app/editor";
 import { EventEmitter } from "./events";
-import { createTextDocument, VscodeTextDocument } from "./textDocument";
+import { createTextDocument, type VscodeTextDocument } from "./textDocument";
 import { VscodeTextEditor } from "./textEditor";
 import { workspaceFs } from "./workspace";
 

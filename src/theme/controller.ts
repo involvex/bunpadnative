@@ -1,4 +1,10 @@
-import { applyTheme, createThemeResources, destroyThemeResources, type ThemeResources } from "./apply";
+import type { Editor } from "../app/editor";
+import {
+  applyTheme,
+  createThemeResources,
+  destroyThemeResources,
+  type ThemeResources,
+} from "./apply";
 import type { ThemeManager } from "./manager";
 import type { ThemeDefinition } from "./types";
 
@@ -36,11 +42,7 @@ export class ThemeController {
     return count;
   }
 
-  applyToWindow(
-    hwnd: bigint,
-    editor: import("../app/editor").Editor,
-    useRichEdit: boolean,
-  ): void {
+  applyToWindow(hwnd: bigint, editor: Editor, useRichEdit: boolean): void {
     if (this.resources) {
       destroyThemeResources(this.resources);
     }

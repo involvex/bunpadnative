@@ -1,6 +1,6 @@
 {
   "name": "reverse-lines",
-  "publisher": "bunpad",
+  "publisher": "involvex",
   "displayName": "Reverse Lines",
   "description": "Reverse the lines in the active document.",
   "version": "1.0.0",
@@ -8,7 +8,9 @@
     "vscode": "^1.85.0"
   },
   "main": "./extension.js",
-  "activationEvents": ["onStartupFinished"],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "contributes": {
     "commands": [
       {

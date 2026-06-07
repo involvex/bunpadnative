@@ -6,10 +6,7 @@ type CommandHandler = (...args: unknown[]) => unknown;
 export class CommandRegistry {
   private readonly handlers = new Map<string, CommandHandler>();
 
-  registerCommand(
-    command: string,
-    callback: CommandHandler,
-  ): Disposable {
+  registerCommand(command: string, callback: CommandHandler): Disposable {
     this.handlers.set(command, callback);
     return {
       dispose: () => {

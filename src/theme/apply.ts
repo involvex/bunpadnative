@@ -2,11 +2,7 @@ import User32 from "@bun-win32/user32";
 
 import type { Editor } from "../app/editor";
 import { pointerToBigInt } from "../win32/pointers";
-import {
-  createFont,
-  createSolidBrush,
-  deleteGdiObject,
-} from "../win32/gdi32";
+import { createFont, createSolidBrush, deleteGdiObject } from "../win32/gdi32";
 import { setDarkTitleBar, setPreferredDarkMode } from "../win32/dwm";
 import { fontSizeToHeight, hexToColorRef } from "./colors";
 import type { ThemeDefinition } from "./types";
@@ -45,7 +41,9 @@ export type ThemeResources = {
   retain: Buffer[];
 };
 
-export const createThemeResources = (theme: ThemeDefinition): ThemeResources => {
+export const createThemeResources = (
+  theme: ThemeDefinition,
+): ThemeResources => {
   const font = createFont({
     height: fontSizeToHeight(theme.editor.fontSize),
     faceName: theme.editor.fontFamily,

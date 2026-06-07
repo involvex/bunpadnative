@@ -24,9 +24,7 @@ const WM_PAINT = 0x000f;
 
 /** Bottom status strip showing document and cursor info. */
 export class StatusBar {
-  private readonly classNameBuf = encodeWide(
-    `BunPadStatus_${process.pid}`,
-  );
+  private readonly classNameBuf = encodeWide(`BunPadStatus_${process.pid}`);
   private readonly wndProc: JSCallback;
   private readonly wndClassBuf: Buffer;
   private readonly retain: Buffer[] = [];
@@ -45,7 +43,9 @@ export class StatusBar {
     this.theme = theme;
     this.wndProc = new JSCallback(
       (hWnd, msg, wParam, lParam) =>
-        msg === WM_PAINT ? (this.paint(hWnd), 0n) : User32.DefWindowProcW(hWnd, msg, wParam, lParam),
+        msg === WM_PAINT
+          ? (this.paint(hWnd), 0n)
+          : User32.DefWindowProcW(hWnd, msg, wParam, lParam),
       { args: ["u64", "u32", "u64", "i64"], returns: "i64" },
     );
 

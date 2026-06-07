@@ -11,7 +11,8 @@ import { ThemeController } from "./theme/controller";
 import { ThemeManager } from "./theme/manager";
 
 const appData =
-  process.env.APPDATA ?? join(process.env.USERPROFILE ?? "", "AppData", "Roaming");
+  process.env.APPDATA ??
+  join(process.env.USERPROFILE ?? "", "AppData", "Roaming");
 
 const appRoot = getAppRoot();
 

@@ -134,12 +134,12 @@ export class VscodeTextDocument {
     return offsetToPosition(this.getText(), offset);
   }
 
-  applyEdits(
-    edits: Array<{ range: Range; newText: string }>,
-  ): boolean {
+  applyEdits(edits: Array<{ range: Range; newText: string }>): boolean {
     let text = this.getText();
     const sorted = [...edits].sort(
-      (a, b) => rangeToOffsets(text, b.range).start - rangeToOffsets(text, a.range).start,
+      (a, b) =>
+        rangeToOffsets(text, b.range).start -
+        rangeToOffsets(text, a.range).start,
     );
 
     for (const edit of sorted) {

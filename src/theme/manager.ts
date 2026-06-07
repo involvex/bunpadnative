@@ -108,7 +108,9 @@ export class ThemeManager {
 
   private async loadSettings(): Promise<void> {
     try {
-      const raw = JSON.parse(await readFile(this.settingsPath, "utf8")) as AppSettings;
+      const raw = JSON.parse(
+        await readFile(this.settingsPath, "utf8"),
+      ) as AppSettings;
       if (typeof raw.theme === "string" && this.themes.has(raw.theme)) {
         this.activeId = raw.theme;
       }
@@ -120,6 +122,9 @@ export class ThemeManager {
   private async saveSettings(): Promise<void> {
     await mkdir(dirname(this.settingsPath), { recursive: true });
     const settings: AppSettings = { theme: this.activeId };
-    await writeFile(this.settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
+    await writeFile(
+      this.settingsPath,
+      `${JSON.stringify(settings, null, 2)}\n`,
+    );
   }
 }

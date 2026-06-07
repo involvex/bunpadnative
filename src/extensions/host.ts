@@ -134,7 +134,9 @@ export class ExtensionHost {
     await commands.executeCommand(command);
   }
 
-  private findExtensionForCommand(command: string): LoadedExtension | undefined {
+  private findExtensionForCommand(
+    command: string,
+  ): LoadedExtension | undefined {
     return this.loaded.find(
       (entry) =>
         entry.parsed.commands.some((item) => item.command === command) ||

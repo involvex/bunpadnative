@@ -23,6 +23,10 @@ const gdi = dlopen("gdi32.dll", {
     args: [FFIType.u64, FFIType.i32, FFIType.i32, FFIType.ptr, FFIType.i32],
     returns: FFIType.i32,
   },
+  GetTextExtentPoint32W: {
+    args: [FFIType.u64, FFIType.ptr, FFIType.i32, FFIType.ptr],
+    returns: FFIType.i32,
+  },
   CreateFontW: {
     args: [
       FFIType.i32,
@@ -73,6 +77,24 @@ export const textOutW = (
   length: number,
 ): void => {
   gdi.symbols.TextOutW(hdc, x, y, ffiPtr(text), length);
+};
+
+/** Measure UTF-16 text width in pixels for the currently selected font. */
+export const measureTextWidth = (hdc: bigint, text: string): number => {
+  const wide = encodeWide(text);
+  const size = Buffer.alloc(8);
+  if (
+    !gdi.symbols.GetTextExtentPoint32W(
+      hdc,
+      ffiPtr(wide),
+      text.length,
+      ffiPtr(size),
+    )
+  ) {
+    return text.length * 8;
+  }
+
+  return size.readInt32LE(0);
 };
 
 export type FontOptions = {

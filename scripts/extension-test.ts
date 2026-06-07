@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { ExtensionHost } from "../src/extensions/host";
 import { vscodeBridge } from "../src/vscode/bridge";
 import { Document } from "../src/app/document";
-import { Editor } from "../src/app/editor";
+import { type Editor } from "../src/app/editor";
 
 class FakeEditor {
   private text = "alpha\nbeta\ngamma";

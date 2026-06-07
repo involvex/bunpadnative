@@ -13,4 +13,4 @@ export const hexToColorRef = (hex: string): number => {
 
 /** Negated pixel height for CreateFontW (positive em height). */
 export const fontSizeToHeight = (pointSize: number): number =>
-  -Math.round(pointSize * 96 / 72);
+  -Math.round((pointSize * 96) / 72);

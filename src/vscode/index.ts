@@ -1,14 +1,7 @@
 import { vscodeBridge, VscodeBridge } from "./bridge";
 import { commands, CommandRegistry } from "./commands";
 import { createWindowApi } from "./window";
-import {
-  EndOfLine,
-  FileType,
-  Position,
-  Range,
-  Selection,
-  Uri,
-} from "./types";
+import { EndOfLine, FileType, Position, Range, Selection, Uri } from "./types";
 
 export type {
   Disposable,

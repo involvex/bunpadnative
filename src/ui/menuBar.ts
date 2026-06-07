@@ -5,8 +5,11 @@ import type { Pointer } from "bun:ffi";
 import { hexToColorRef } from "../theme/colors";
 import type { ThemeDefinition } from "../theme/types";
 import {
+  createFont,
   createSolidBrush,
   deleteGdiObject,
+  measureTextWidth,
+  selectObject,
   setBkModeTransparent,
   setTextColor,
   textOutW,
@@ -16,6 +19,8 @@ import {
   TPM_LEFTALIGN,
   TPM_RETURNCMD,
   TPM_TOPALIGN,
+  TPM_VERTICAL,
+  WM_OPENMENU,
 } from "../win32/layout";
 import { encodeWide, ffiPtr } from "../win32/strings";
 import { packWndClassEx } from "../win32/wndclass";
@@ -27,6 +32,10 @@ const WM_PAINT = 0x000f;
 const WM_MOUSEMOVE = 0x0200;
 const WM_LBUTTONDOWN = 0x0201;
 const WM_MOUSELEAVE = 0x02a3;
+const WM_NULL = 0x0000;
+const TME_LEAVE = 0x00000002;
+const MENU_PAD_X = 12;
+const MENU_ITEM_PAD = 16;
 
 export type MenuBarEntry = {
   label: string;
@@ -35,17 +44,19 @@ export type MenuBarEntry = {
 
 /** Custom GDI-painted menu strip with native popup submenus. */
 export class MenuBar {
-  private readonly classNameBuf = encodeWide(
-    `BunPadMenuBar_${process.pid}`,
-  );
+  private readonly classNameBuf = encodeWide(`BunPadMenuBar_${process.pid}`);
   private readonly wndProc: JSCallback;
   private readonly wndClassBuf: Buffer;
   private readonly retain: Buffer[] = [];
 
   private hwnd = 0n;
   private hoverIndex = -1;
+  private openIndex = -1;
+  private trackingMouse = false;
   private theme: ThemeDefinition;
   private brushes = { bg: 0n, hover: 0n, active: 0n };
+  private font = 0n;
+  private itemWidths: number[] = [];
 
   constructor(
     private readonly parentHwnd: bigint,
@@ -67,7 +78,7 @@ export class MenuBar {
     );
 
     User32.RegisterClassExW(ffiPtr(this.wndClassBuf));
-    this.resetBrushes();
+    this.resetResources();
   }
 
   create(): void {
@@ -95,6 +106,11 @@ export class MenuBar {
     return this.hwnd;
   }
 
+  /** Programmatically open a top-level menu (for tests). */
+  openMenuAt(index: number): number {
+    return this.openMenu(index);
+  }
+
   resize(width: number): void {
     if (!this.hwnd) {
       return;
@@ -104,12 +120,12 @@ export class MenuBar {
 
   setTheme(theme: ThemeDefinition): void {
     this.theme = theme;
-    this.resetBrushes();
+    this.resetResources();
     User32.InvalidateRect(this.hwnd, null, 1);
   }
 
   destroy(): void {
-    this.clearBrushes();
+    this.clearResources();
     if (this.hwnd) {
       User32.DestroyWindow(this.hwnd);
       this.hwnd = 0n;
@@ -118,21 +134,48 @@ export class MenuBar {
     this.wndProc.close();
   }
 
-  private resetBrushes(): void {
-    this.clearBrushes();
+  private resetResources(): void {
+    this.clearResources();
     const menuBar = this.theme.ui.menuBar;
     this.brushes = {
       bg: createSolidBrush(hexToColorRef(menuBar.background)),
       hover: createSolidBrush(hexToColorRef(menuBar.hover)),
       active: createSolidBrush(hexToColorRef(menuBar.active)),
     };
+    this.font = createFont({
+      height: -14,
+      faceName: "Segoe UI",
+      weight: 400,
+    });
+    this.itemWidths = this.entries.map((entry) =>
+      this.estimateItemWidth(entry.label),
+    );
   }
 
-  private clearBrushes(): void {
+  private clearResources(): void {
     deleteGdiObject(this.brushes.bg);
     deleteGdiObject(this.brushes.hover);
     deleteGdiObject(this.brushes.active);
+    deleteGdiObject(this.font);
     this.brushes = { bg: 0n, hover: 0n, active: 0n };
+    this.font = 0n;
+  }
+
+  private estimateItemWidth(label: string): number {
+    if (!this.font) {
+      return label.length * 8 + MENU_ITEM_PAD;
+    }
+
+    const hdc = User32.GetDC(this.hwnd || this.parentHwnd);
+    if (!hdc) {
+      return label.length * 8 + MENU_ITEM_PAD;
+    }
+
+    const previous = selectObject(hdc, this.font);
+    const width = measureTextWidth(hdc, label) + MENU_ITEM_PAD;
+    selectObject(hdc, previous);
+    User32.ReleaseDC(this.hwnd || this.parentHwnd, hdc);
+    return width;
   }
 
   private handleMessage(
@@ -147,24 +190,46 @@ export class MenuBar {
         return 0n;
 
       case WM_MOUSEMOVE:
+        this.ensureMouseTracking(hWnd);
         this.updateHover(Number(lParam & 0xffffn));
         return 0n;
 
       case WM_LBUTTONDOWN: {
         const index = this.hitTest(Number(lParam & 0xffffn));
         if (index >= 0) {
-          this.openMenu(index);
+          User32.PostMessageW(hWnd, WM_OPENMENU, BigInt(index), 0n);
         }
         return 0n;
       }
 
+      case WM_OPENMENU:
+        this.openMenu(Number(wParam));
+        return 0n;
+
       case WM_MOUSELEAVE:
+        this.trackingMouse = false;
         this.hoverIndex = -1;
         User32.InvalidateRect(hWnd, null, 1);
         return 0n;
 
       default:
         return User32.DefWindowProcW(hWnd, msg, wParam, lParam);
+    }
+  }
+
+  private ensureMouseTracking(hWnd: bigint): void {
+    if (this.trackingMouse) {
+      return;
+    }
+
+    const tme = Buffer.alloc(24);
+    tme.writeUInt32LE(24, 0);
+    tme.writeUInt32LE(TME_LEAVE, 4);
+    tme.writeBigUInt64LE(hWnd, 8);
+    tme.writeUInt32LE(0, 16);
+
+    if (User32.TrackMouseEvent(ffiPtr(tme))) {
+      this.trackingMouse = true;
     }
   }
 
@@ -179,42 +244,47 @@ export class MenuBar {
     User32.GetClientRect(hWnd, ffiPtr(rect));
     User32.FillRect(hdc, ffiPtr(rect), this.brushes.bg);
 
+    const previousFont = this.font ? selectObject(hdc, this.font) : 0n;
     setBkModeTransparent(hdc);
     setTextColor(hdc, hexToColorRef(this.theme.ui.menuBar.foreground));
 
-    let x = 12;
-    const y = 8;
+    let x = MENU_PAD_X;
+    const y = 7;
     for (let index = 0; index < this.entries.length; index += 1) {
       const entry = this.entries[index]!;
+      const width =
+        this.itemWidths[index] ?? this.estimateItemWidth(entry.label);
       const label = encodeWide(entry.label);
       this.retain.push(label);
 
       const itemRect = Buffer.alloc(16);
-      itemRect.writeInt32LE(x - 8, 0);
+      itemRect.writeInt32LE(x, 0);
       itemRect.writeInt32LE(0, 4);
-      itemRect.writeInt32LE(x + entry.label.length * 8 + 8, 8);
+      itemRect.writeInt32LE(x + width, 8);
       itemRect.writeInt32LE(MENU_BAR_HEIGHT, 12);
 
-      if (index === this.hoverIndex) {
-        User32.FillRect(hdc, ffiPtr(itemRect), this.brushes.hover);
+      if (index === this.hoverIndex || index === this.openIndex) {
+        const brush =
+          index === this.openIndex ? this.brushes.active : this.brushes.hover;
+        User32.FillRect(hdc, ffiPtr(itemRect), brush);
       }
 
-      textOutW(hdc, x, y, label, entry.label.length);
-      x += entry.label.length * 8 + 20;
+      textOutW(hdc, x + MENU_ITEM_PAD / 2, y, label, entry.label.length);
+      x += width;
+    }
+
+    if (previousFont) {
+      selectObject(hdc, previousFont);
     }
 
     User32.EndPaint(hWnd, ffiPtr(ps));
   }
 
-  private itemWidth(label: string): number {
-    return label.length * 8 + 20;
-  }
-
   private hitTest(x: number): number {
-    let cursor = 12;
+    let cursor = MENU_PAD_X;
     for (let index = 0; index < this.entries.length; index += 1) {
-      const width = this.itemWidth(this.entries[index]!.label);
-      if (x >= cursor - 8 && x < cursor - 8 + width) {
+      const width = this.itemWidths[index] ?? 0;
+      if (x >= cursor && x < cursor + width) {
         return index;
       }
       cursor += width;
@@ -230,20 +300,26 @@ export class MenuBar {
     }
   }
 
-  private openMenu(index: number): void {
+  private openMenu(index: number): number {
     const entry = this.entries[index];
-    if (!entry) {
-      return;
+    if (!entry?.menu) {
+      return 0;
     }
+
+    this.openIndex = index;
+    this.hoverIndex = index;
+    User32.InvalidateRect(this.hwnd, null, 1);
 
     const point = Buffer.alloc(8);
     point.writeInt32LE(0, 0);
     point.writeInt32LE(MENU_BAR_HEIGHT, 4);
     User32.ClientToScreen(this.hwnd, ffiPtr(point));
 
+    User32.SetForegroundWindow(this.parentHwnd);
+
     const cmd = User32.TrackPopupMenu(
       entry.menu,
-      TPM_RETURNCMD | TPM_LEFTALIGN | TPM_TOPALIGN,
+      TPM_RETURNCMD | TPM_LEFTALIGN | TPM_TOPALIGN | TPM_VERTICAL,
       point.readInt32LE(0),
       point.readInt32LE(4),
       0,
@@ -251,8 +327,15 @@ export class MenuBar {
       null,
     );
 
+    User32.PostMessageW(this.parentHwnd, WM_NULL, 0n, 0n);
+
+    this.openIndex = -1;
+    User32.InvalidateRect(this.hwnd, null, 1);
+
     if (cmd) {
       this.onCommand(cmd);
     }
+
+    return cmd;
   }
 }

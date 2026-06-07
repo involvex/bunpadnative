@@ -4,7 +4,7 @@
  */
 import { join } from "node:path";
 
-import { Editor } from "../src/app/editor";
+import { type Editor } from "../src/app/editor";
 import { Document } from "../src/app/document";
 import { EditorContextImpl } from "../src/plugins/context";
 import { PluginHost } from "../src/plugins/host";

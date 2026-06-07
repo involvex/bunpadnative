@@ -29,7 +29,10 @@ export const createWindowApi = (bridge: VscodeBridge) => ({
     return editor ? [editor] : [];
   },
 
-  showInformationMessage(message: string, ..._items: string[]): Promise<string | undefined> {
+  showInformationMessage(
+    message: string,
+    ..._items: string[]
+  ): Promise<string | undefined> {
     showMessage(
       bridge,
       message,
@@ -39,7 +42,10 @@ export const createWindowApi = (bridge: VscodeBridge) => ({
     return Promise.resolve(undefined);
   },
 
-  showWarningMessage(message: string, ..._items: string[]): Promise<string | undefined> {
+  showWarningMessage(
+    message: string,
+    ..._items: string[]
+  ): Promise<string | undefined> {
     showMessage(
       bridge,
       message,
@@ -49,7 +55,10 @@ export const createWindowApi = (bridge: VscodeBridge) => ({
     return Promise.resolve(undefined);
   },
 
-  showErrorMessage(message: string, ..._items: string[]): Promise<string | undefined> {
+  showErrorMessage(
+    message: string,
+    ..._items: string[]
+  ): Promise<string | undefined> {
     showMessage(
       bridge,
       message,

@@ -10,11 +10,7 @@ import type { Pointer } from "bun:ffi";
 
 import { Document } from "./document";
 import { Editor } from "./editor";
-import {
-  createAppMenus,
-  MenuCommand,
-  type AppMenus,
-} from "./menu";
+import { createAppMenus, MenuCommand, type AppMenus } from "./menu";
 import { showOpenDialog, showSaveDialog } from "../io/dialog";
 import type { MessagePumpContext } from "../loop/messageLoop";
 import { EditorContextImpl } from "../plugins/context";
@@ -61,9 +57,7 @@ export type MainWindowOptions = {
 
 export class MainWindow {
   /** Strong refs — GC of these buffers/callbacks crashes Win32. */
-  private readonly classNameBuf = encodeWide(
-    `BunPadMain_${process.pid}`,
-  );
+  private readonly classNameBuf = encodeWide(`BunPadMain_${process.pid}`);
   private titleBuf: Buffer;
   private readonly editorClassBuf: Buffer;
   private readonly wndProc: JSCallback;
@@ -104,9 +98,7 @@ export class MainWindow {
       );
     }
 
-    const editorClass = this.useRichEdit
-      ? RICHEDIT_CLASS
-      : FALLBACK_EDIT_CLASS;
+    const editorClass = this.useRichEdit ? RICHEDIT_CLASS : FALLBACK_EDIT_CLASS;
     this.editorClassBuf = encodeWide(editorClass);
 
     this.wndProc = new JSCallback(
@@ -187,6 +179,7 @@ export class MainWindow {
 
     User32.ShowWindow(this.hwnd, ShowWindowCommand.SW_SHOW);
     User32.UpdateWindow(this.hwnd);
+    this.applyCurrentTheme();
     this.refreshTitle();
   }
 
@@ -222,7 +215,11 @@ export class MainWindow {
         return 0n;
 
       case WM_CTLCOLOREDIT: {
-        if (!this.useRichEdit && lParam === this.editorHwnd && this.themeController) {
+        if (
+          !this.useRichEdit &&
+          lParam === this.editorHwnd &&
+          this.themeController
+        ) {
           setTextColor(
             wParam,
             hexToColorRef(this.themeController.current().editor.foreground),
@@ -356,10 +353,8 @@ export class MainWindow {
   }
 
   private buildEditorContext(): EditorContextImpl {
-    return new EditorContextImpl(
-      this.editor!,
-      this.document,
-      (message) => this.showInfo(message),
+    return new EditorContextImpl(this.editor!, this.document, (message) =>
+      this.showInfo(message),
     );
   }
 
@@ -486,8 +481,7 @@ export class MainWindow {
   }
 
   private async selectThemeByCommand(commandId: number): Promise<void> {
-    const themeId =
-      this.themeController?.manager.themeIdForCommand(commandId);
+    const themeId = this.themeController?.manager.themeIdForCommand(commandId);
     if (!themeId || !this.themeController) {
       return;
     }

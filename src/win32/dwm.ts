@@ -1,7 +1,11 @@
 import { dlopen, FFIType } from "bun:ffi";
 
-/** DWMWA_USE_IMMERSIVE_DARK_MODE */
+import { ffiPtr } from "./pointers";
+
+/** DWMWA_USE_IMMERSIVE_DARK_MODE (Win10 20H1+) */
 const DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+/** DWMWA_USE_IMMERSIVE_DARK_MODE before 20H1 builds */
+const DWMWA_USE_IMMERSIVE_DARK_MODE_LEGACY = 19;
 
 /** PreferredAppMode.AllowDark — best-effort; optional on older builds. */
 const ALLOW_DARK = 1;
@@ -64,10 +68,18 @@ export const setDarkTitleBar = (hwnd: bigint, dark: boolean): void => {
 
   const buf = Buffer.alloc(4);
   buf.writeInt32LE(dark ? 1 : 0, 0);
+  const value = ffiPtr(buf) as unknown as Buffer;
+
   dwm.symbols.DwmSetWindowAttribute(
     hwnd,
     DWMWA_USE_IMMERSIVE_DARK_MODE,
-    buf,
+    value,
+    4,
+  );
+  dwm.symbols.DwmSetWindowAttribute(
+    hwnd,
+    DWMWA_USE_IMMERSIVE_DARK_MODE_LEGACY,
+    value,
     4,
   );
 };

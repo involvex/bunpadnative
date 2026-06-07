@@ -64,11 +64,11 @@ export const createAppMenus = (
     return buf;
   };
 
-  const fileMenu = User32.CreateMenu();
-  const editMenu = User32.CreateMenu();
-  const viewMenu = User32.CreateMenu();
-  const themeMenu = User32.CreateMenu();
-  const pluginsMenu = User32.CreateMenu();
+  const fileMenu = User32.CreatePopupMenu();
+  const editMenu = User32.CreatePopupMenu();
+  const viewMenu = User32.CreatePopupMenu();
+  const themeMenu = User32.CreatePopupMenu();
+  const pluginsMenu = User32.CreatePopupMenu();
 
   if (!fileMenu || !editMenu || !viewMenu || !themeMenu || !pluginsMenu) {
     throw new Error("CreateMenu failed");
@@ -127,12 +127,7 @@ export const createAppMenus = (
     command += 1;
   }
 
-  User32.AppendMenuW(
-    viewMenu,
-    MF_POPUP,
-    themeMenu,
-    ffiPtr(label("&Theme")),
-  );
+  User32.AppendMenuW(viewMenu, MF_POPUP, themeMenu, ffiPtr(label("&Theme")));
   User32.AppendMenuW(
     viewMenu,
     MF_STRING,

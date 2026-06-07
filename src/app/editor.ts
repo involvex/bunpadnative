@@ -1,6 +1,6 @@
 import User32, { MessageFilter } from "@bun-win32/user32";
 
-import { encodeWide, ffiPtr } from "../win32/strings";
+import { encodeWide } from "../win32/strings";
 import { pointerToBigInt } from "../win32/pointers";
 
 /** EM_GETSEL / EM_SETSEL — query or set character selection range. */
@@ -17,12 +17,7 @@ export class Editor {
 
   getText(): string {
     const length = Number(
-      User32.SendMessageW(
-        this.hwnd,
-        MessageFilter.WM_GETTEXTLENGTH,
-        0n,
-        0n,
-      ),
+      User32.SendMessageW(this.hwnd, MessageFilter.WM_GETTEXTLENGTH, 0n, 0n),
     );
 
     if (length <= 0) {

@@ -1,12 +1,7 @@
 import type { Editor } from "../app/editor";
 import { positionToOffset } from "./textDocument";
 import type { VscodeTextDocument } from "./textDocument";
-import {
-  Position,
-  Range,
-  Selection,
-  type TextEditorEdit,
-} from "./types";
+import { type Position, Range, Selection, type TextEditorEdit } from "./types";
 
 /** VS Code TextEditor backed by the native RichEdit control. */
 export class VscodeTextEditor {
@@ -17,7 +12,6 @@ export class VscodeTextEditor {
 
   get selection(): Selection {
     const { start, end } = this.editor.getSelection();
-    const text = this.document.getText();
     const anchor = this.document.positionAt(start);
     const active = this.document.positionAt(end);
     return new Selection(
