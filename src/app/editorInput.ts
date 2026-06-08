@@ -6,7 +6,7 @@ import { MenuCommand } from "./menu";
 import { ffiPtr } from "../win32/strings";
 
 /** RichEdit EM_SETEVENTMASK — enable parent EN_MSGFILTER notifications. */
-const EM_SETEVENTMASK = 0x0445; // WM_USER + 69 per richedit.h
+const EM_SETEVENTMASK = 0x0445;
 const ENM_MOUSEEVENTS = 0x00000001;
 const ENM_KEYEVENTS = 0x00010000;
 
@@ -17,9 +17,15 @@ const WM_KEYDOWN = 0x0100;
 const WM_KEYUP = 0x0101;
 const WM_SYSKEYDOWN = 0x0104;
 const WM_SYSKEYUP = 0x0105;
+const WM_CHAR = 0x0102;
 const WM_RBUTTONDOWN = 0x0204;
 const WM_RBUTTONUP = 0x0205;
 export const WM_CONTEXTMENU = 0x007b;
+
+export type EditorInputHooks = {
+  onChar?: (charCode: number) => { handled: boolean; discard?: boolean };
+  onKeyDown?: (vk: number) => boolean;
+};
 
 /** Screen coords from WM_CONTEXTMENU lParam (-1 uses cursor position). */
 export const contextMenuScreenPoint = (
@@ -45,12 +51,9 @@ export const contextMenuScreenPoint = (
   return { screenX, screenY };
 };
 
-/** Modifier keys — not application shortcuts. */
 const MODIFIER_VKS = new Set([0x10, 0x11, 0x12]);
-
 const VK_CONTROL = 0x11;
 
-/** NMHDR.code offset; MSGFILTER fields follow 24-byte NMHDR on x64 (no padding after msg). */
 const MSGFILTER_MSG_OFFSET = 24;
 const MSGFILTER_WPARAM_OFFSET = 28;
 const MSGFILTER_LPARAM_OFFSET = 36;
@@ -84,7 +87,6 @@ const isShortcutKeyMessage = (msg: number): boolean =>
   msg === WM_SYSKEYDOWN ||
   msg === WM_SYSKEYUP;
 
-/** Map Ctrl+virtual-key to a MenuCommand id (matches accelerator table). */
 export const resolveCtrlShortcut = (vk: number): number | null => {
   switch (vk) {
     case 0x41:
@@ -117,9 +119,9 @@ export const resolveCtrlShortcut = (vk: number): number | null => {
 export type EditorNotifyResult =
   | { handled: false }
   | { handled: true; commandId: number }
-  | { handled: true; contextMenu: { screenX: number; screenY: number } };
+  | { handled: true; contextMenu: { screenX: number; screenY: number } }
+  | { handled: true; discardMessage: true };
 
-/** Enable RichEdit key/mouse filter notifications on the editor control. */
 export const enableEditorEventMask = (editorHwnd: bigint): void => {
   User32.SendMessageW(
     editorHwnd,
@@ -129,10 +131,10 @@ export const enableEditorEventMask = (editorHwnd: bigint): void => {
   );
 };
 
-/** Parse WM_NOTIFY / EN_MSGFILTER from the parent window. */
 export const handleEditorNotify = (
   notifyPtr: bigint,
   editorHwnd: bigint,
+  hooks?: EditorInputHooks,
 ): EditorNotifyResult => {
   if (notifyPtr === 0n) {
     return { handled: false };
@@ -152,6 +154,17 @@ export const handleEditorNotify = (
   const msg = read.u32(ptr, MSGFILTER_MSG_OFFSET);
   const msgWParam = read.u32(ptr, MSGFILTER_WPARAM_OFFSET);
   const msgLParam = read.u64(ptr, MSGFILTER_LPARAM_OFFSET);
+
+  if (msg === WM_CHAR && hooks?.onChar) {
+    const charResult = hooks.onChar(msgWParam & 0xffff);
+    if (charResult.handled && charResult.discard !== false) {
+      return { handled: true, discardMessage: true };
+    }
+  }
+
+  if (msg === WM_KEYDOWN && hooks?.onKeyDown?.(msgWParam & 0xffff)) {
+    return { handled: true, discardMessage: true };
+  }
 
   if (isShortcutKeyMessage(msg) && isCtrlDown()) {
     const vk = msgWParam & 0xffff;
@@ -187,7 +200,6 @@ export const handleEditorNotify = (
   return { handled: false };
 };
 
-/** Enable or gray context menu items before display. */
 export const updateContextMenuState = (
   menu: bigint,
   options: { hasSelection: boolean; canUndo: boolean },

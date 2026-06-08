@@ -16,7 +16,9 @@
 - FFI structs (`WNDCLASSEXW` 80 bytes, `MSG` 48 bytes, `OPENFILENAMEW` 152 bytes) are manually packed Buffers (package types them as Pointer only); hold strong refs to `JSCallback` WndProc and wide-string buffers on window instances (GC crashes Win32).
 - Phases 1–6 implemented (window, file I/O/menus/dialogs, plugin API, VSCode shim, compile packaging, editor UX); later work in `NEXT-STEPS.md`.
 - Packaged exe resolves assets from its directory (`themes/`, `plugins/`, `extensions/`, `vscode-shim/`); use `ffiPtr()` / `pointerToBigInt()` for FFI buffers in compiled builds (Buffer `.ptr` polyfill may be absent).
-- User settings and custom themes persist under `%APPDATA%/BunPad/` (`settings.json`, `themes/`); recent files stored in settings.
+- User settings and custom themes persist under `%APPDATA%/BunPad/` (`settings.json`, `themes/`); recent files stored in settings. `settings.json` includes `editor` toggles: word completion, auto-brackets, bracket matching, breadcrumbs.
+- Top-level **Settings** menu (between View and Plugins): Preferences dialog, Themes submenu (pick/reload/open folder/import), Install Plugin, Import VS Code Extension, Open Plugins/Extensions folders. View menu keeps Language Mode only.
+- File-path breadcrumb bar (`BreadcrumbBar`, 24px) above editor; word completion via LISTBOX popup; auto-close brackets via `EN_MSGFILTER`/`WM_CHAR` in `editorInput.ts`.
 - Custom menu bar dropdowns require `CreatePopupMenu()` with deferred `TrackPopupMenu` (`WM_OPENMENU`, `SetForegroundWindow`); not `CreateMenu()`.
 - Document dirty state compares live editor text to a saved baseline with CRLF/LF normalization (`setBaseline`/`syncDirtyFromText`); do not mark dirty on every `EN_CHANGE` (RichEdit fires on programmatic updates).
 - Smoke/automation tests set `BUNPAD_TEST=1` to skip unsaved-changes prompts on programmatic close.

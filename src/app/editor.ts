@@ -1,11 +1,12 @@
 import User32, { MessageFilter } from "@bun-win32/user32";
 
-import { encodeWide } from "../win32/strings";
+import { encodeWide, ffiPtr } from "../win32/strings";
 import { pointerToBigInt } from "../win32/pointers";
 
 /** EM_GETSEL / EM_SETSEL — query or set character selection range. */
 const EM_GETSEL = 0x00b0;
 const EM_SETSEL = 0x00b1;
+const EM_POSFROMCHAR = 0x00d6;
 
 /** EM_LINEFROMCHAR / EM_LINEINDEX — map character index to line/column. */
 const EM_LINEFROMCHAR = 0x00c9;
@@ -90,6 +91,39 @@ export class Editor {
     this.setText(next);
     const cursor = start + replacement.length;
     this.setSelection(cursor, cursor);
+  }
+
+  insertAtCursor(text: string): void {
+    const { start, end } = this.getSelection();
+    this.replaceRange(start, end, text);
+  }
+
+  /** Client coordinates of the caret for popup placement. */
+  getCaretClientPoint(): { x: number; y: number } {
+    const pos = this.getCursorPosition();
+    const pointBuf = Buffer.alloc(4);
+    User32.SendMessageW(
+      this.hwnd,
+      EM_POSFROMCHAR,
+      BigInt(pos),
+      pointerToBigInt(pointBuf),
+    );
+    const x = pointBuf.readInt16LE(0);
+    const y = pointBuf.readInt16LE(2);
+    return { x: Math.max(0, x), y: Math.max(0, y) };
+  }
+
+  /** Screen coordinates of the caret. */
+  getCaretScreenPoint(): { x: number; y: number } {
+    const client = this.getCaretClientPoint();
+    const point = Buffer.alloc(8);
+    point.writeInt32LE(client.x, 0);
+    point.writeInt32LE(client.y, 4);
+    User32.ClientToScreen(this.hwnd, ffiPtr(point));
+    return {
+      x: point.readInt32LE(0),
+      y: point.readInt32LE(4),
+    };
   }
 
   getLineColumn(): { line: number; column: number } {

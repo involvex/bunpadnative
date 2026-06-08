@@ -1,7 +1,11 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
-import type { AppSettings } from "../theme/types";
+import {
+  DEFAULT_EDITOR_SETTINGS,
+  type AppSettings,
+  type EditorSettings,
+} from "../theme/types";
 import type { LanguageMode } from "../highlight/types";
 
 const DEFAULT_THEME = "dark";
@@ -17,12 +21,20 @@ const LANGUAGE_MODES: LanguageMode[] = [
 
 export const MAX_RECENT_FILES = 10;
 
-/** Persists app settings (theme, recent files) to %APPDATA%/BunPad/settings.json. */
+const mergeEditorSettings = (
+  partial?: Partial<EditorSettings>,
+): EditorSettings => ({
+  ...DEFAULT_EDITOR_SETTINGS,
+  ...partial,
+});
+
+/** Persists app settings to %APPDATA%/BunPad/settings.json. */
 export class SettingsStore {
   private data: AppSettings = {
     theme: DEFAULT_THEME,
     recentFiles: [],
     languageMode: DEFAULT_LANGUAGE_MODE,
+    editor: { ...DEFAULT_EDITOR_SETTINGS },
   };
 
   constructor(readonly path: string) {}
@@ -37,6 +49,10 @@ export class SettingsStore {
 
   get languageMode(): LanguageMode {
     return this.data.languageMode ?? DEFAULT_LANGUAGE_MODE;
+  }
+
+  get editor(): EditorSettings {
+    return mergeEditorSettings(this.data.editor);
   }
 
   async load(): Promise<void> {
@@ -57,6 +73,11 @@ export class SettingsStore {
         LANGUAGE_MODES.includes(raw.languageMode as LanguageMode)
       ) {
         this.data.languageMode = raw.languageMode as LanguageMode;
+      }
+      if (raw.editor && typeof raw.editor === "object") {
+        this.data.editor = mergeEditorSettings(
+          raw.editor as Partial<EditorSettings>,
+        );
       }
     } catch {
       // First run — keep defaults.
@@ -88,6 +109,11 @@ export class SettingsStore {
 
   async setLanguageMode(mode: LanguageMode): Promise<void> {
     this.data.languageMode = mode;
+    await this.save();
+  }
+
+  async setEditorSettings(settings: EditorSettings): Promise<void> {
+    this.data.editor = { ...settings };
     await this.save();
   }
 }

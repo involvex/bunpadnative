@@ -46,12 +46,20 @@ export enum MenuCommand {
   LanguageJson = 1602,
   LanguageTypescript = 1603,
   LanguageMarkdown = 1604,
+  SettingsPreferences = 1700,
+  SettingsImportTheme = 1701,
+  SettingsInstallPlugin = 1702,
+  SettingsImportExtension = 1703,
+  SettingsOpenPluginsFolder = 1704,
+  SettingsOpenExtensionsFolder = 1705,
 }
 
 export type AppMenus = {
   fileMenu: bigint;
   editMenu: bigint;
   viewMenu: bigint;
+  settingsMenu: bigint;
+  themeMenu: bigint;
   pluginsMenu: bigint;
   recentMenu: bigint;
   contextMenu: bigint;
@@ -119,6 +127,80 @@ export const populateRecentMenu = (
   );
 };
 
+/** Rebuild Settings → Themes submenu. */
+export const populateThemeMenu = (
+  themeMenu: bigint,
+  themes: readonly ThemeSummary[],
+  retain: Buffer[],
+): void => {
+  let count = User32.GetMenuItemCount(themeMenu);
+  while (count > 0) {
+    User32.DeleteMenu(themeMenu, 0, MF_BYPOSITION);
+    count -= 1;
+  }
+
+  let command = MenuCommand.ThemeCommandBase;
+  for (const theme of themes) {
+    if (command > MenuCommand.ViewReloadThemes - 1) {
+      break;
+    }
+    User32.AppendMenuW(
+      themeMenu,
+      MF_STRING,
+      BigInt(command),
+      ffiPtr(appendLabel(retain, theme.name)),
+    );
+    command += 1;
+  }
+
+  User32.AppendMenuW(themeMenu, MF_SEPARATOR, 0n, null);
+  User32.AppendMenuW(
+    themeMenu,
+    MF_STRING,
+    BigInt(MenuCommand.ViewReloadThemes),
+    ffiPtr(appendLabel(retain, "Reload Themes")),
+  );
+  User32.AppendMenuW(
+    themeMenu,
+    MF_STRING,
+    BigInt(MenuCommand.ViewOpenThemesFolder),
+    ffiPtr(appendLabel(retain, "Open Themes Folder...")),
+  );
+  User32.AppendMenuW(
+    themeMenu,
+    MF_STRING,
+    BigInt(MenuCommand.SettingsImportTheme),
+    ffiPtr(appendLabel(retain, "Import Theme...")),
+  );
+};
+
+/** Rebuild extension command items on the Plugins menu. */
+export const populateExtensionsMenu = (
+  pluginsMenu: bigint,
+  extensions: readonly ExtensionCommand[],
+  retain: Buffer[],
+): void => {
+  let count = User32.GetMenuItemCount(pluginsMenu);
+  while (count > 2) {
+    User32.DeleteMenu(pluginsMenu, count - 1, MF_BYPOSITION);
+    count -= 1;
+  }
+
+  if (extensions.length === 0) {
+    return;
+  }
+
+  User32.AppendMenuW(pluginsMenu, MF_SEPARATOR, 0n, null);
+  for (const extension of extensions) {
+    User32.AppendMenuW(
+      pluginsMenu,
+      MF_STRING,
+      BigInt(extension.menuCommandId),
+      ffiPtr(appendLabel(retain, extension.title)),
+    );
+  }
+};
+
 const buildContextMenu = (retain: Buffer[]): bigint => {
   const menu = User32.CreatePopupMenu();
   if (!menu) {
@@ -157,6 +239,7 @@ export const createAppMenus = (
   const fileMenu = User32.CreatePopupMenu();
   const editMenu = User32.CreatePopupMenu();
   const viewMenu = User32.CreatePopupMenu();
+  const settingsMenu = User32.CreatePopupMenu();
   const themeMenu = User32.CreatePopupMenu();
   const languageMenu = User32.CreatePopupMenu();
   const pluginsMenu = User32.CreatePopupMenu();
@@ -166,6 +249,7 @@ export const createAppMenus = (
     !fileMenu ||
     !editMenu ||
     !viewMenu ||
+    !settingsMenu ||
     !themeMenu ||
     !languageMenu ||
     !pluginsMenu ||
@@ -210,26 +294,6 @@ export const createAppMenus = (
   User32.AppendMenuW(editMenu, MF_SEPARATOR, 0n, null);
   item(editMenu, "Select &All", MenuCommand.EditSelectAll);
 
-  let command = MenuCommand.ThemeCommandBase;
-  for (const theme of themes) {
-    if (command > MenuCommand.ViewReloadThemes - 1) {
-      break;
-    }
-    User32.AppendMenuW(
-      themeMenu,
-      MF_STRING,
-      BigInt(command),
-      ffiPtr(appendLabel(retain, theme.name)),
-    );
-    command += 1;
-  }
-
-  User32.AppendMenuW(
-    viewMenu,
-    MF_POPUP,
-    themeMenu,
-    ffiPtr(appendLabel(retain, "&Theme")),
-  );
   User32.AppendMenuW(
     viewMenu,
     MF_POPUP,
@@ -242,8 +306,32 @@ export const createAppMenus = (
   item(languageMenu, "&TypeScript", MenuCommand.LanguageTypescript);
   item(languageMenu, "&Markdown", MenuCommand.LanguageMarkdown);
 
-  item(viewMenu, "&Reload Themes", MenuCommand.ViewReloadThemes);
-  item(viewMenu, "&Open Themes Folder...", MenuCommand.ViewOpenThemesFolder);
+  populateThemeMenu(themeMenu, themes, retain);
+  item(settingsMenu, "&Preferences...", MenuCommand.SettingsPreferences);
+  User32.AppendMenuW(settingsMenu, MF_SEPARATOR, 0n, null);
+  User32.AppendMenuW(
+    settingsMenu,
+    MF_POPUP,
+    themeMenu,
+    ffiPtr(appendLabel(retain, "&Themes")),
+  );
+  User32.AppendMenuW(settingsMenu, MF_SEPARATOR, 0n, null);
+  item(settingsMenu, "Install &Plugin...", MenuCommand.SettingsInstallPlugin);
+  item(
+    settingsMenu,
+    "Import VS Code &Extension...",
+    MenuCommand.SettingsImportExtension,
+  );
+  item(
+    settingsMenu,
+    "Open Plugins &Folder",
+    MenuCommand.SettingsOpenPluginsFolder,
+  );
+  item(
+    settingsMenu,
+    "Open Extensions Fo&lder",
+    MenuCommand.SettingsOpenExtensionsFolder,
+  );
 
   item(pluginsMenu, "&Reload BunPad Plugins", MenuCommand.PluginsReload);
   User32.AppendMenuW(
@@ -252,18 +340,7 @@ export const createAppMenus = (
     BigInt(ExtensionMenuCommand.Reload),
     ffiPtr(appendLabel(retain, "&Reload VS Code Extensions")),
   );
-
-  if (extensions.length > 0) {
-    User32.AppendMenuW(pluginsMenu, MF_SEPARATOR, 0n, null);
-    for (const extension of extensions) {
-      User32.AppendMenuW(
-        pluginsMenu,
-        MF_STRING,
-        BigInt(extension.menuCommandId),
-        ffiPtr(appendLabel(retain, extension.title)),
-      );
-    }
-  }
+  populateExtensionsMenu(pluginsMenu, extensions, retain);
 
   const accelCount = 11;
   const accelBuf = Buffer.alloc(ACCEL_SIZE * accelCount);
@@ -295,6 +372,8 @@ export const createAppMenus = (
     fileMenu,
     editMenu,
     viewMenu,
+    settingsMenu,
+    themeMenu,
     pluginsMenu,
     recentMenu,
     contextMenu,

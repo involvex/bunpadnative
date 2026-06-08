@@ -40,9 +40,23 @@ if (editCount !== 11) {
 }
 
 const viewCount = User32.GetMenuItemCount(menus.viewMenu);
+const settingsCount = User32.GetMenuItemCount(menus.settingsMenu);
 const themeCount = themeManager.summaries.length;
-if (viewCount < 4) {
-  throw new Error(`View menu expected at least 4 items, got ${viewCount}`);
+if (viewCount !== 1) {
+  throw new Error(
+    `View menu expected 1 item (Language Mode), got ${viewCount}`,
+  );
+}
+if (settingsCount !== 8) {
+  throw new Error(`Settings menu expected 8 items, got ${settingsCount}`);
+}
+
+const themeMenuCount = User32.GetMenuItemCount(menus.themeMenu);
+const expectedThemeItems = themeCount + 4;
+if (themeMenuCount !== expectedThemeItems) {
+  throw new Error(
+    `Theme submenu expected ${expectedThemeItems} items, got ${themeMenuCount}`,
+  );
 }
 
 const pluginsCount = User32.GetMenuItemCount(menus.pluginsMenu);
@@ -77,6 +91,12 @@ const ids = [
   MenuCommand.EditSelectAll,
   MenuCommand.ViewReloadThemes,
   MenuCommand.ViewOpenThemesFolder,
+  MenuCommand.SettingsPreferences,
+  MenuCommand.SettingsImportTheme,
+  MenuCommand.SettingsInstallPlugin,
+  MenuCommand.SettingsImportExtension,
+  MenuCommand.SettingsOpenPluginsFolder,
+  MenuCommand.SettingsOpenExtensionsFolder,
   MenuCommand.LanguageAuto,
   MenuCommand.LanguagePlain,
   MenuCommand.LanguageJson,
@@ -104,5 +124,5 @@ if (languageModeForCommand(MenuCommand.FileNew) !== null) {
 
 console.log("menu-test ok");
 console.log(
-  `  file=${fileCount} edit=${editCount} view=${viewCount} plugins=${pluginsCount} themes=${themeCount}`,
+  `  file=${fileCount} edit=${editCount} view=${viewCount} settings=${settingsCount} plugins=${pluginsCount} themes=${themeCount}`,
 );

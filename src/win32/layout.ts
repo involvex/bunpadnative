@@ -1,5 +1,6 @@
 /** Client-area layout for custom chrome. */
 export const MENU_BAR_HEIGHT = 32;
+export const BREADCRUMB_HEIGHT = 24;
 export const STATUS_BAR_HEIGHT = 24;
 
 /** WM_CTLCOLOREDIT — parent returns HBRUSH for EDIT child background. */

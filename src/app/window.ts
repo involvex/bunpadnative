@@ -7,6 +7,7 @@ import User32, {
 } from "@bun-win32/user32";
 import { JSCallback } from "bun:ffi";
 import type { Pointer } from "bun:ffi";
+import { join } from "node:path";
 
 import { Document } from "./document";
 import { Editor } from "./editor";
@@ -15,6 +16,7 @@ import {
   contextMenuScreenPoint,
   enableEditorEventMask,
   handleEditorNotify,
+  type EditorInputHooks,
   updateContextMenuState,
   WM_CONTEXTMENU,
   WM_NOTIFY,
@@ -29,13 +31,36 @@ import {
   createAppMenus,
   languageModeForCommand,
   MenuCommand,
+  populateExtensionsMenu,
   populateRecentMenu,
+  populateThemeMenu,
   recentPathForCommand,
   type AppMenus,
 } from "./menu";
+import {
+  extensionRootFromPath,
+  importExtensionFolder,
+  importPluginFolder,
+  importThemeFile,
+} from "./install";
+import { getAppRoot } from "./paths";
 import type { SettingsStore } from "./settings";
 import { showInputDialog, showReplaceDialog } from "../io/inputDialog";
-import { showOpenDialog, showSaveDialog } from "../io/dialog";
+import { showSettingsDialog } from "../io/settingsDialog";
+import {
+  showFolderDialog,
+  showOpenJsonDialog,
+  showOpenManifestDialog,
+  showOpenPluginDialog,
+  showOpenDialog,
+  showSaveDialog,
+} from "../io/dialog";
+import { autoCloseForChar, findMatchingBracket } from "../editor/brackets";
+import {
+  buildCompletionCandidates,
+  shouldTriggerCompletion,
+  wordPrefixAt,
+} from "../editor/completion";
 import type { MessagePumpContext } from "../loop/messageLoop";
 import { EditorContextImpl } from "../plugins/context";
 import type { ExtensionHost } from "../extensions/host";
@@ -45,7 +70,13 @@ import { vscodeBridge } from "../vscode/bridge";
 import type { ThemeController } from "../theme/controller";
 import { hexToColorRef } from "../theme/colors";
 import { MenuBar } from "../ui/menuBar";
+import { BreadcrumbBar } from "../ui/breadcrumbBar";
+import { CompletionPopup } from "../ui/completionPopup";
 import { StatusBar } from "../ui/statusBar";
+import {
+  packTextColorFormat,
+  setCharFormatSelection,
+} from "../win32/charformat";
 import {
   CS_HREDRAW,
   CS_VREDRAW,
@@ -60,6 +91,7 @@ import {
 } from "../win32/constants";
 import {
   HWND_TOP,
+  BREADCRUMB_HEIGHT,
   MENU_BAR_HEIGHT,
   STATUS_BAR_HEIGHT,
   SWP_NOMOVE,
@@ -104,7 +136,10 @@ export class MainWindow {
   private readonly settingsStore?: SettingsStore;
   private editorContext: EditorContextImpl | null = null;
   private menuBar: MenuBar | null = null;
+  private breadcrumbBar: BreadcrumbBar | null = null;
   private statusBar: StatusBar | null = null;
+  private readonly completionPopup = new CompletionPopup();
+  private bracketHighlightTimer: ReturnType<typeof setTimeout> | null = null;
   private lastFindNeedle = "";
   private lastReplaceNeedle = "";
   private lastReplaceWith = "";
@@ -201,12 +236,15 @@ export class MainWindow {
       throw new Error("CreateWindowExW failed");
     }
 
+    this.completionPopup.bind(this.hwnd);
+
     this.menuBar = new MenuBar(
       this.hwnd,
       [
         { label: "File", menu: this.menus.fileMenu },
         { label: "Edit", menu: this.menus.editMenu },
         { label: "View", menu: this.menus.viewMenu },
+        { label: "Settings", menu: this.menus.settingsMenu },
         { label: "Plugins", menu: this.menus.pluginsMenu },
       ],
       (commandId) => {
@@ -215,6 +253,13 @@ export class MainWindow {
       theme,
     );
     this.menuBar.create();
+
+    this.breadcrumbBar = new BreadcrumbBar(this.hwnd, theme);
+    this.breadcrumbBar.create();
+    this.breadcrumbBar.setVisible(
+      this.settingsStore?.editor.showBreadcrumbs ?? true,
+    );
+    this.breadcrumbBar.refresh(this.document.path);
 
     this.statusBar = new StatusBar(this.hwnd, theme);
     this.statusBar.create();
@@ -269,7 +314,11 @@ export class MainWindow {
       }
 
       case WM_NOTIFY: {
-        const result = handleEditorNotify(lParam, this.editorHwnd);
+        const result = handleEditorNotify(
+          lParam,
+          this.editorHwnd,
+          this.editorInputHooks(),
+        );
         if (!result.handled) {
           return User32.DefWindowProcW(hWnd, msg, wParam, lParam);
         }
@@ -281,7 +330,7 @@ export class MainWindow {
             result.contextMenu.screenY,
           );
         }
-        return 1n;
+        return "discardMessage" in result ? 1n : 1n;
       }
 
       case WM_CTLCOLOREDIT: {
@@ -310,6 +359,8 @@ export class MainWindow {
             }
             vscodeBridge.notifyDocumentChanged();
             this.scheduleHighlight();
+            this.updateCompletion();
+            this.scheduleBracketHighlight();
           }
           return 0n;
         }
@@ -409,6 +460,11 @@ export class MainWindow {
     }
   }
 
+  private chromeTopOffset(): number {
+    const breadcrumbVisible = this.breadcrumbBar?.isVisible() ?? false;
+    return MENU_BAR_HEIGHT + (breadcrumbVisible ? BREADCRUMB_HEIGHT : 0);
+  }
+
   private layoutClient(parentHwnd: bigint): void {
     const rect = Buffer.alloc(16);
     if (!User32.GetClientRect(parentHwnd, ffiPtr(rect))) {
@@ -417,22 +473,17 @@ export class MainWindow {
 
     const width = rect.readInt32LE(8) - rect.readInt32LE(0);
     const height = rect.readInt32LE(12) - rect.readInt32LE(4);
-    const editorHeight = Math.max(
-      0,
-      height - MENU_BAR_HEIGHT - STATUS_BAR_HEIGHT,
-    );
+    const top = this.chromeTopOffset();
+    const editorHeight = Math.max(0, height - top - STATUS_BAR_HEIGHT);
 
     this.menuBar?.resize(width);
+    this.breadcrumbBar?.resize(width, MENU_BAR_HEIGHT);
+    this.breadcrumbBar?.setVisible(
+      this.settingsStore?.editor.showBreadcrumbs ?? true,
+    );
 
     if (this.editorHwnd) {
-      User32.MoveWindow(
-        this.editorHwnd,
-        0,
-        MENU_BAR_HEIGHT,
-        width,
-        editorHeight,
-        1,
-      );
+      User32.MoveWindow(this.editorHwnd, 0, top, width, editorHeight, 1);
     }
 
     this.statusBar?.resize(width, height - STATUS_BAR_HEIGHT);
@@ -443,6 +494,17 @@ export class MainWindow {
     const flags = SWP_NOMOVE | SWP_NOSIZE;
     if (this.menuBar?.handle) {
       User32.SetWindowPos(this.menuBar.handle, HWND_TOP, 0, 0, 0, 0, flags);
+    }
+    if (this.breadcrumbBar?.handle) {
+      User32.SetWindowPos(
+        this.breadcrumbBar.handle,
+        HWND_TOP,
+        0,
+        0,
+        0,
+        0,
+        flags,
+      );
     }
     if (this.statusBar?.handle) {
       User32.SetWindowPos(this.statusBar.handle, HWND_TOP, 0, 0, 0, 0, flags);
@@ -456,6 +518,7 @@ export class MainWindow {
 
     const theme = this.themeController.current();
     this.menuBar?.setTheme(theme);
+    this.breadcrumbBar?.setTheme(theme);
     this.statusBar?.setTheme(theme);
     this.refreshStatus();
     this.runWithoutDirtyTracking(() => {
@@ -660,6 +723,227 @@ export class MainWindow {
     );
   }
 
+  private rebuildMenus(): void {
+    if (!this.themeController) {
+      return;
+    }
+
+    populateThemeMenu(
+      this.menus.themeMenu,
+      this.themeController.manager.summaries,
+      this.menus.retain,
+    );
+    populateExtensionsMenu(
+      this.menus.pluginsMenu,
+      this.extensionHost?.contributedCommands ?? [],
+      this.menus.retain,
+    );
+    this.refreshRecentMenu();
+  }
+
+  private refreshBreadcrumbs(): void {
+    this.breadcrumbBar?.refresh(this.document.path);
+  }
+
+  private editorInputHooks(): EditorInputHooks {
+    return {
+      onChar: (charCode) => this.handleEditorChar(charCode),
+      onKeyDown: (vk) => this.handleEditorKeyDown(vk),
+    };
+  }
+
+  private handleEditorChar(charCode: number): {
+    handled: boolean;
+    discard?: boolean;
+  } {
+    const editor = this.editor;
+    const settings = this.settingsStore?.editor;
+    if (!editor || !settings) {
+      return { handled: false };
+    }
+
+    const char = String.fromCharCode(charCode);
+    if (this.completionPopup.isVisible) {
+      this.completionPopup.hide();
+    }
+
+    const { start, end } = editor.getSelection();
+    const auto = autoCloseForChar(char, settings, start !== end);
+    if (!auto) {
+      return { handled: false };
+    }
+
+    this.runWithoutDirtyTracking(() => {
+      editor.insertAtCursor(auto.insert);
+      const cursor = start + auto.cursorOffset;
+      editor.setSelection(cursor, cursor);
+    });
+    return { handled: true, discard: true };
+  }
+
+  private handleEditorKeyDown(vk: number): boolean {
+    if (!this.completionPopup.isVisible) {
+      return false;
+    }
+
+    if (this.completionPopup.handleKeyDown(vk)) {
+      if (vk === 0x0d || vk === 0x09) {
+        this.applyCompletionSelection();
+      }
+      return true;
+    }
+
+    return false;
+  }
+
+  private updateCompletion(): void {
+    const editor = this.editor;
+    const settings = this.settingsStore?.editor;
+    if (!editor || !settings?.wordCompletion) {
+      this.completionPopup.hide();
+      return;
+    }
+
+    const text = editor.getText();
+    const cursor = editor.getCursorPosition();
+    const { prefix } = wordPrefixAt(text, cursor);
+    if (!shouldTriggerCompletion(settings, prefix)) {
+      this.completionPopup.hide();
+      return;
+    }
+
+    const items = buildCompletionCandidates(text, cursor, prefix);
+    if (items.length === 0) {
+      this.completionPopup.hide();
+      return;
+    }
+
+    const point = editor.getCaretScreenPoint();
+    this.completionPopup.show(items, point.x, point.y);
+  }
+
+  private applyCompletionSelection(): void {
+    const editor = this.editor;
+    const selected = this.completionPopup.selectedItem();
+    if (!editor || !selected) {
+      this.completionPopup.hide();
+      return;
+    }
+
+    const text = editor.getText();
+    const cursor = editor.getCursorPosition();
+    const { start } = wordPrefixAt(text, cursor);
+    this.runWithoutDirtyTracking(() => {
+      editor.replaceRange(start, cursor, selected);
+    });
+    this.completionPopup.hide();
+  }
+
+  private scheduleBracketHighlight(): void {
+    if (this.bracketHighlightTimer) {
+      clearTimeout(this.bracketHighlightTimer);
+    }
+    this.bracketHighlightTimer = setTimeout(() => {
+      this.bracketHighlightTimer = null;
+      this.applyBracketHighlight();
+    }, 80);
+  }
+
+  private applyBracketHighlight(): void {
+    const editor = this.editor;
+    const settings = this.settingsStore?.editor;
+    if (!editor || !settings?.bracketMatching || !this.themeController) {
+      return;
+    }
+
+    const text = editor.getText();
+    const match = findMatchingBracket(text, editor.getCursorPosition());
+    if (!match) {
+      return;
+    }
+
+    const accent = hexToColorRef(this.themeController.current().ui.accent);
+    const format = packTextColorFormat(accent);
+    const hwnd = editor.hwnd;
+    const highlightChar = (index: number): void => {
+      User32.SendMessageW(hwnd, 0x00b1, BigInt(index), BigInt(index + 1));
+      setCharFormatSelection(hwnd, format);
+    };
+
+    highlightChar(match.open);
+    highlightChar(match.close);
+    editor.setSelection(editor.getCursorPosition(), editor.getCursorPosition());
+  }
+
+  private async showPreferences(): Promise<void> {
+    if (!this.settingsStore) {
+      return;
+    }
+
+    const result = await showSettingsDialog(
+      this.hwnd,
+      this.settingsStore.editor,
+    );
+    if (!result) {
+      return;
+    }
+
+    await this.settingsStore.setEditorSettings(result);
+    this.breadcrumbBar?.setVisible(result.showBreadcrumbs);
+    this.layoutClient(this.hwnd);
+    this.showInfo("Preferences saved.");
+  }
+
+  private async installPlugin(): Promise<void> {
+    const folder = showFolderDialog(this.hwnd, "Select plugin folder");
+    const file = folder ? null : showOpenPluginDialog(this.hwnd);
+    const source = folder ?? file;
+    if (!source) {
+      return;
+    }
+
+    const dest = await importPluginFolder(source);
+    await this.reloadPlugins();
+    this.showInfo(`Installed plugin to ${dest}`);
+  }
+
+  private async importExtension(): Promise<void> {
+    const folder = showFolderDialog(this.hwnd, "Select extension folder");
+    const manifest = folder ? null : showOpenManifestDialog(this.hwnd);
+    const source =
+      folder ?? (manifest ? extensionRootFromPath(manifest) : null);
+    if (!source) {
+      return;
+    }
+
+    const dest = await importExtensionFolder(source);
+    await this.reloadExtensions();
+    this.rebuildMenus();
+    this.showInfo(`Imported extension to ${dest}`);
+  }
+
+  private async importTheme(): Promise<void> {
+    const path = showOpenJsonDialog(this.hwnd);
+    if (!path || !this.themeController) {
+      return;
+    }
+
+    const dest = await importThemeFile(
+      path,
+      this.themeController.manager.userThemesFolder(),
+    );
+    await this.reloadThemes();
+    this.showInfo(`Imported theme to ${dest}`);
+  }
+
+  private openPluginsFolder(): void {
+    Bun.spawn(["explorer.exe", join(getAppRoot(), "plugins")]);
+  }
+
+  private openExtensionsFolder(): void {
+    Bun.spawn(["explorer.exe", join(getAppRoot(), "extensions")]);
+  }
+
   private async findText(): Promise<void> {
     const editor = this.editor;
     if (!editor) {
@@ -784,6 +1068,7 @@ export class MainWindow {
           }
           this.refreshTitle();
           this.refreshStatus();
+          this.refreshBreadcrumbs();
           break;
 
         case MenuCommand.FileOpen:
@@ -858,6 +1143,30 @@ export class MainWindow {
           this.openThemesFolder();
           break;
 
+        case MenuCommand.SettingsPreferences:
+          await this.showPreferences();
+          break;
+
+        case MenuCommand.SettingsImportTheme:
+          await this.importTheme();
+          break;
+
+        case MenuCommand.SettingsInstallPlugin:
+          await this.installPlugin();
+          break;
+
+        case MenuCommand.SettingsImportExtension:
+          await this.importExtension();
+          break;
+
+        case MenuCommand.SettingsOpenPluginsFolder:
+          this.openPluginsFolder();
+          break;
+
+        case MenuCommand.SettingsOpenExtensionsFolder:
+          this.openExtensionsFolder();
+          break;
+
         default:
           if (
             commandId >= MenuCommand.FileRecentBase &&
@@ -908,6 +1217,7 @@ export class MainWindow {
     }
 
     const count = await this.themeController.reload();
+    this.rebuildMenus();
     this.applyCurrentTheme();
     this.showInfo(`Reloaded ${count} theme(s).`);
   }
@@ -947,6 +1257,7 @@ export class MainWindow {
     this.refreshRecentMenu();
     this.refreshTitle();
     this.refreshStatus();
+    this.refreshBreadcrumbs();
   }
 
   private async saveFile(saveAs: boolean): Promise<boolean> {
@@ -976,6 +1287,7 @@ export class MainWindow {
     this.refreshRecentMenu();
     this.refreshTitle();
     this.refreshStatus();
+    this.refreshBreadcrumbs();
     return true;
   }
 
@@ -1015,8 +1327,11 @@ export class MainWindow {
     this.themeController?.destroy();
     this.highlighter.cancel();
     this.menuBar?.destroy();
+    this.breadcrumbBar?.destroy();
+    this.completionPopup.destroy();
     this.statusBar?.destroy();
     this.menuBar = null;
+    this.breadcrumbBar = null;
     this.statusBar = null;
 
     if (this.menus.accelTable) {

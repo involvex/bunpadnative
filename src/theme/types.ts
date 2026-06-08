@@ -54,8 +54,25 @@ export type ThemeSummary = {
 
 import type { LanguageMode } from "../highlight/types";
 
+export type EditorSettings = {
+  wordCompletion: boolean;
+  completionMinChars: number;
+  autoCloseBrackets: boolean;
+  bracketMatching: boolean;
+  showBreadcrumbs: boolean;
+};
+
+export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
+  wordCompletion: true,
+  completionMinChars: 3,
+  autoCloseBrackets: true,
+  bracketMatching: true,
+  showBreadcrumbs: true,
+};
+
 export type AppSettings = {
   theme: string;
   recentFiles: string[];
   languageMode?: LanguageMode;
+  editor?: Partial<EditorSettings>;
 };
