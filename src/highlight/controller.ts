@@ -248,4 +248,57 @@ export class HighlightController {
       this.retain.splice(0, this.retain.length - 128);
     }
   }
+
+  /** Restore syntax colors for a character range after transient bracket highlight. */
+  restoreRangeFormat(
+    editor: Editor,
+    theme: ThemeDefinition,
+    start: number,
+    end: number,
+    text: string,
+  ): void {
+    if (end <= start || text.length === 0) {
+      return;
+    }
+
+    if (this.languageMode === "auto") {
+      this.language = detectLanguageWithContent(this.documentPath, text);
+    }
+
+    const grammar = grammarFor(this.language);
+    const hwnd = editor.hwnd;
+    const startBuf = Buffer.alloc(4);
+    const endBuf = Buffer.alloc(4);
+    User32.SendMessageW(
+      hwnd,
+      EM_GETSEL,
+      pointerToBigInt(startBuf),
+      pointerToBigInt(endBuf),
+    );
+    const savedStart = startBuf.readInt32LE(0);
+    const savedEnd = endBuf.readInt32LE(0);
+
+    const colors = tokenColorsFor(theme);
+    const baseFormat = packTextColorFormat(
+      hexToColorRef(theme.editor.foreground),
+    );
+    this.retain.push(baseFormat);
+
+    const tokens =
+      grammar.length > 0 ? coalesceTokens(tokenize(text, grammar)) : [];
+
+    for (let index = start; index < end; index += 1) {
+      const token = tokens.find(
+        (entry) => index >= entry.start && index < entry.end,
+      );
+      const format = token
+        ? packTextColorFormat(colorForKind(token.kind, colors))
+        : baseFormat;
+      this.retain.push(format);
+      User32.SendMessageW(hwnd, EM_SETSEL, BigInt(index), BigInt(index + 1));
+      setCharFormatSelection(hwnd, format);
+    }
+
+    User32.SendMessageW(hwnd, EM_SETSEL, BigInt(savedStart), BigInt(savedEnd));
+  }
 }

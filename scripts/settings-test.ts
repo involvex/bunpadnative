@@ -44,6 +44,12 @@ if (reloaded.editor.showBreadcrumbs !== false) {
   throw new Error("Expected showBreadcrumbs=false after save");
 }
 if (
+  reloaded.editor.showSymbolBreadcrumbs !==
+  DEFAULT_EDITOR_SETTINGS.showSymbolBreadcrumbs
+) {
+  throw new Error("Expected showSymbolBreadcrumbs default preserved");
+}
+if (
   reloaded.editor.autoCloseBrackets !==
   DEFAULT_EDITOR_SETTINGS.autoCloseBrackets
 ) {

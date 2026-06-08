@@ -40,6 +40,7 @@ import {
 import {
   extensionRootFromPath,
   importExtensionFolder,
+  importExtensionFromMarketplace,
   importPluginFolder,
   importThemeFile,
 } from "./install";
@@ -55,12 +56,17 @@ import {
   showOpenDialog,
   showSaveDialog,
 } from "../io/dialog";
-import { autoCloseForChar, findMatchingBracket } from "../editor/brackets";
+import {
+  autoCloseForChar,
+  findMatchingBracket,
+  type BracketMatch,
+} from "../editor/brackets";
 import {
   buildCompletionCandidates,
   shouldTriggerCompletion,
   wordPrefixAt,
 } from "../editor/completion";
+import { symbolChainAtCursor } from "../editor/symbols";
 import type { MessagePumpContext } from "../loop/messageLoop";
 import { EditorContextImpl } from "../plugins/context";
 import type { ExtensionHost } from "../extensions/host";
@@ -140,6 +146,8 @@ export class MainWindow {
   private statusBar: StatusBar | null = null;
   private readonly completionPopup = new CompletionPopup();
   private bracketHighlightTimer: ReturnType<typeof setTimeout> | null = null;
+  private breadcrumbRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastBracketHighlight: BracketMatch | null = null;
   private lastFindNeedle = "";
   private lastReplaceNeedle = "";
   private lastReplaceWith = "";
@@ -256,10 +264,17 @@ export class MainWindow {
 
     this.breadcrumbBar = new BreadcrumbBar(this.hwnd, theme);
     this.breadcrumbBar.create();
+    this.breadcrumbBar.setSymbolNavigate((charOffset) => {
+      if (!this.editor) {
+        return;
+      }
+      this.editor.setSelection(charOffset, charOffset);
+      User32.SetFocus(this.editorHwnd);
+    });
     this.breadcrumbBar.setVisible(
       this.settingsStore?.editor.showBreadcrumbs ?? true,
     );
-    this.breadcrumbBar.refresh(this.document.path);
+    this.refreshBreadcrumbs();
 
     this.statusBar = new StatusBar(this.hwnd, theme);
     this.statusBar.create();
@@ -361,6 +376,7 @@ export class MainWindow {
             this.scheduleHighlight();
             this.updateCompletion();
             this.scheduleBracketHighlight();
+            this.scheduleBreadcrumbRefresh();
           }
           return 0n;
         }
@@ -541,6 +557,8 @@ export class MainWindow {
     if (!this.themeController || !this.editor) {
       return;
     }
+
+    this.clearBracketHighlight();
 
     this.themeController.applyToWindow(
       this.hwnd,
@@ -742,7 +760,32 @@ export class MainWindow {
   }
 
   private refreshBreadcrumbs(): void {
-    this.breadcrumbBar?.refresh(this.document.path);
+    const editor = this.editor;
+    const settings = this.settingsStore?.editor;
+    if (!this.breadcrumbBar) {
+      return;
+    }
+
+    const symbols =
+      editor && settings?.showSymbolBreadcrumbs
+        ? symbolChainAtCursor(
+            editor.getText(),
+            editor.getCursorPosition(),
+            this.highlighter.currentLanguage,
+          )
+        : [];
+
+    this.breadcrumbBar.refresh(this.document.path, symbols);
+  }
+
+  private scheduleBreadcrumbRefresh(): void {
+    if (this.breadcrumbRefreshTimer) {
+      clearTimeout(this.breadcrumbRefreshTimer);
+    }
+    this.breadcrumbRefreshTimer = setTimeout(() => {
+      this.breadcrumbRefreshTimer = null;
+      this.refreshBreadcrumbs();
+    }, 80);
   }
 
   private editorInputHooks(): EditorInputHooks {
@@ -768,7 +811,12 @@ export class MainWindow {
     }
 
     const { start, end } = editor.getSelection();
-    const auto = autoCloseForChar(char, settings, start !== end);
+    const text = editor.getText();
+    const auto = autoCloseForChar(char, settings, start !== end, {
+      text,
+      cursor: start,
+      language: this.highlighter.currentLanguage,
+    });
     if (!auto) {
       return { handled: false };
     }
@@ -782,6 +830,14 @@ export class MainWindow {
   }
 
   private handleEditorKeyDown(vk: number): boolean {
+    const NAV_KEYS = new Set([
+      0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x2d, 0x2e,
+    ]);
+    if (NAV_KEYS.has(vk)) {
+      this.scheduleBracketHighlight();
+      this.scheduleBreadcrumbRefresh();
+    }
+
     if (!this.completionPopup.isVisible) {
       return false;
     }
@@ -849,15 +905,51 @@ export class MainWindow {
     }, 80);
   }
 
-  private applyBracketHighlight(): void {
+  private clearBracketHighlight(): void {
     const editor = this.editor;
-    const settings = this.settingsStore?.editor;
-    if (!editor || !settings?.bracketMatching || !this.themeController) {
+    const theme = this.themeController?.current();
+    const previous = this.lastBracketHighlight;
+    if (!editor || !theme || !previous) {
+      this.lastBracketHighlight = null;
       return;
     }
 
     const text = editor.getText();
-    const match = findMatchingBracket(text, editor.getCursorPosition());
+    this.runWithoutDirtyTracking(() => {
+      this.highlighter.restoreRangeFormat(
+        editor,
+        theme,
+        previous.open,
+        previous.open + 1,
+        text,
+      );
+      this.highlighter.restoreRangeFormat(
+        editor,
+        theme,
+        previous.close,
+        previous.close + 1,
+        text,
+      );
+    });
+    this.lastBracketHighlight = null;
+  }
+
+  private applyBracketHighlight(): void {
+    const editor = this.editor;
+    const settings = this.settingsStore?.editor;
+    if (!editor || !settings?.bracketMatching || !this.themeController) {
+      this.clearBracketHighlight();
+      return;
+    }
+
+    const text = editor.getText();
+    const match = findMatchingBracket(
+      text,
+      editor.getCursorPosition(),
+      this.highlighter.currentLanguage,
+    );
+
+    this.clearBracketHighlight();
     if (!match) {
       return;
     }
@@ -865,14 +957,18 @@ export class MainWindow {
     const accent = hexToColorRef(this.themeController.current().ui.accent);
     const format = packTextColorFormat(accent);
     const hwnd = editor.hwnd;
+    const saved = editor.getSelection();
     const highlightChar = (index: number): void => {
       User32.SendMessageW(hwnd, 0x00b1, BigInt(index), BigInt(index + 1));
       setCharFormatSelection(hwnd, format);
     };
 
-    highlightChar(match.open);
-    highlightChar(match.close);
-    editor.setSelection(editor.getCursorPosition(), editor.getCursorPosition());
+    this.runWithoutDirtyTracking(() => {
+      highlightChar(match.open);
+      highlightChar(match.close);
+      editor.setSelection(saved.start, saved.end);
+    });
+    this.lastBracketHighlight = match;
   }
 
   private async showPreferences(): Promise<void> {
@@ -920,6 +1016,23 @@ export class MainWindow {
     await this.reloadExtensions();
     this.rebuildMenus();
     this.showInfo(`Imported extension to ${dest}`);
+  }
+
+  private async installFromMarketplace(): Promise<void> {
+    const extensionId = await showInputDialog(
+      this.hwnd,
+      "Install from Open VSX",
+      "Extension id (publisher.name):",
+      "",
+    );
+    if (!extensionId?.trim()) {
+      return;
+    }
+
+    const dest = await importExtensionFromMarketplace(extensionId);
+    await this.reloadExtensions();
+    this.rebuildMenus();
+    this.showInfo(`Installed extension from Open VSX to ${dest}`);
   }
 
   private async importTheme(): Promise<void> {
@@ -1157,6 +1270,10 @@ export class MainWindow {
 
         case MenuCommand.SettingsImportExtension:
           await this.importExtension();
+          break;
+
+        case MenuCommand.SettingsInstallFromMarketplace:
+          await this.installFromMarketplace();
           break;
 
         case MenuCommand.SettingsOpenPluginsFolder:

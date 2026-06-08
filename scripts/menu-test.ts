@@ -47,8 +47,8 @@ if (viewCount !== 1) {
     `View menu expected 1 item (Language Mode), got ${viewCount}`,
   );
 }
-if (settingsCount !== 8) {
-  throw new Error(`Settings menu expected 8 items, got ${settingsCount}`);
+if (settingsCount !== 9) {
+  throw new Error(`Settings menu expected 9 items, got ${settingsCount}`);
 }
 
 const themeMenuCount = User32.GetMenuItemCount(menus.themeMenu);
@@ -97,6 +97,7 @@ const ids = [
   MenuCommand.SettingsImportExtension,
   MenuCommand.SettingsOpenPluginsFolder,
   MenuCommand.SettingsOpenExtensionsFolder,
+  MenuCommand.SettingsInstallFromMarketplace,
   MenuCommand.LanguageAuto,
   MenuCommand.LanguagePlain,
   MenuCommand.LanguageJson,

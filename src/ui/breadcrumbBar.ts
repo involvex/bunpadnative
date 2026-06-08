@@ -3,6 +3,7 @@ import { JSCallback } from "bun:ffi";
 import type { Pointer } from "bun:ffi";
 
 import { pathForSegment, pathSegments } from "../editor/breadcrumbs";
+import type { SymbolSegment } from "../editor/symbols";
 import { hexToColorRef } from "../theme/colors";
 import type { ThemeDefinition } from "../theme/types";
 import {
@@ -27,13 +28,17 @@ const WM_LBUTTONDOWN = 0x0201;
 
 const SEPARATOR = " › ";
 
+type CrumbSegment =
+  | { type: "path"; label: string; pathIndex: number }
+  | { type: "symbol"; label: string; charOffset: number };
+
 type SegmentHit = {
-  index: number;
+  segment: CrumbSegment;
   x: number;
   width: number;
 };
 
-/** File-path breadcrumb strip above the editor. */
+/** File-path and symbol breadcrumb strip above the editor. */
 export class BreadcrumbBar {
   private readonly classNameBuf = encodeWide(`BunPadCrumb_${process.pid}`);
   private readonly wndProc: JSCallback;
@@ -42,12 +47,15 @@ export class BreadcrumbBar {
 
   private hwnd = 0n;
   private filePath: string | null = null;
-  private segments: string[] = ["Untitled"];
+  private segments: CrumbSegment[] = [
+    { type: "path", label: "Untitled", pathIndex: 0 },
+  ];
   private hits: SegmentHit[] = [];
   private visible = true;
   private theme: ThemeDefinition;
   private brush = 0n;
   private font = 0n;
+  private onSymbolNavigate: ((charOffset: number) => void) | null = null;
 
   constructor(
     private readonly parentHwnd: bigint,
@@ -95,6 +103,10 @@ export class BreadcrumbBar {
     return this.hwnd;
   }
 
+  setSymbolNavigate(handler: (charOffset: number) => void): void {
+    this.onSymbolNavigate = handler;
+  }
+
   setVisible(visible: boolean): void {
     this.visible = visible;
     if (!this.hwnd) {
@@ -107,9 +119,27 @@ export class BreadcrumbBar {
     return this.visible;
   }
 
-  refresh(filePath: string | null): void {
+  refresh(filePath: string | null, symbols: SymbolSegment[] = []): void {
     this.filePath = filePath;
-    this.segments = pathSegments(filePath);
+    const paths = pathSegments(filePath);
+    const next: CrumbSegment[] = paths.map((label, pathIndex) => ({
+      type: "path",
+      label,
+      pathIndex,
+    }));
+
+    for (const symbol of symbols) {
+      next.push({
+        type: "symbol",
+        label: symbol.name,
+        charOffset: symbol.charOffset,
+      });
+    }
+
+    this.segments =
+      next.length > 0
+        ? next
+        : [{ type: "path", label: "Untitled", pathIndex: 0 }];
     User32.InvalidateRect(this.hwnd, null, 1);
   }
 
@@ -170,13 +200,20 @@ export class BreadcrumbBar {
 
   private onClick(x: number): void {
     for (const hit of this.hits) {
-      if (x >= hit.x && x < hit.x + hit.width) {
-        const target = pathForSegment(this.filePath, hit.index);
+      if (x < hit.x || x >= hit.x + hit.width) {
+        continue;
+      }
+
+      if (hit.segment.type === "path") {
+        const target = pathForSegment(this.filePath, hit.segment.pathIndex);
         if (target) {
           Bun.spawn(["explorer.exe", "/select,", target]);
         }
         return;
       }
+
+      this.onSymbolNavigate?.(hit.segment.charOffset);
+      return;
     }
   }
 
@@ -198,6 +235,7 @@ export class BreadcrumbBar {
     this.hits = [];
     let x = 12;
     const clientWidth = rect.readInt32LE(8) - rect.readInt32LE(0);
+    const symbolColor = hexToColorRef(this.theme.ui.accent);
 
     for (let index = 0; index < this.segments.length; index += 1) {
       if (index > 0) {
@@ -207,7 +245,14 @@ export class BreadcrumbBar {
         x += measureTextWidth(hdc, SEPARATOR);
       }
 
-      const label = this.segments[index]!;
+      const segment = this.segments[index]!;
+      if (segment.type === "symbol") {
+        setTextColor(hdc, symbolColor);
+      } else {
+        setTextColor(hdc, hexToColorRef(this.theme.ui.foreground));
+      }
+
+      const label = segment.label;
       const wide = encodeWide(label);
       this.retain.push(wide);
       const width = measureTextWidth(hdc, label);
@@ -215,7 +260,7 @@ export class BreadcrumbBar {
         break;
       }
 
-      this.hits.push({ index, x, width });
+      this.hits.push({ segment, x, width });
       textOutW(hdc, x, 4, wide, label.length);
       x += width + 4;
     }

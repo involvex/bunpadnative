@@ -25,12 +25,12 @@ if (autoCloseForChar("(", { ...settings, autoCloseBrackets: false }, false)) {
 }
 
 const text = "(hello) { return [1]; }";
-const fnMatch = findMatchingBracket(text, 0);
+const fnMatch = findMatchingBracket(text, 0, "plain");
 if (!fnMatch || text[fnMatch.open] !== "(" || text[fnMatch.close] !== ")") {
   throw new Error("Expected matching parentheses");
 }
 
-const arrayMatch = findMatchingBracket(text, text.indexOf("["));
+const arrayMatch = findMatchingBracket(text, text.indexOf("["), "plain");
 if (
   !arrayMatch ||
   text[arrayMatch.open] !== "[" ||

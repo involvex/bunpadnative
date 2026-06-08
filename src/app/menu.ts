@@ -52,6 +52,7 @@ export enum MenuCommand {
   SettingsImportExtension = 1703,
   SettingsOpenPluginsFolder = 1704,
   SettingsOpenExtensionsFolder = 1705,
+  SettingsInstallFromMarketplace = 1706,
 }
 
 export type AppMenus = {
@@ -321,6 +322,11 @@ export const createAppMenus = (
     settingsMenu,
     "Import VS Code &Extension...",
     MenuCommand.SettingsImportExtension,
+  );
+  item(
+    settingsMenu,
+    "Install Extension from &Marketplace...",
+    MenuCommand.SettingsInstallFromMarketplace,
   );
   item(
     settingsMenu,

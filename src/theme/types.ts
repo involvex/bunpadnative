@@ -60,6 +60,7 @@ export type EditorSettings = {
   autoCloseBrackets: boolean;
   bracketMatching: boolean;
   showBreadcrumbs: boolean;
+  showSymbolBreadcrumbs: boolean;
 };
 
 export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
@@ -68,6 +69,7 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   autoCloseBrackets: true,
   bracketMatching: true,
   showBreadcrumbs: true,
+  showSymbolBreadcrumbs: true,
 };
 
 export type AppSettings = {

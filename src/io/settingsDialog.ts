@@ -24,7 +24,7 @@ const BS_PUSHBUTTON = 0x0000_0000;
 const SS_LEFT = 0x0000_0000;
 
 const DLG_WIDTH = 420;
-const DLG_HEIGHT = 280;
+const DLG_HEIGHT = 306;
 const MARGIN = 16;
 const ROW = 26;
 const BTN_W = 88;
@@ -35,6 +35,7 @@ const CHECK_IDS = {
   autoCloseBrackets: 102,
   bracketMatching: 103,
   showBreadcrumbs: 104,
+  showSymbolBreadcrumbs: 105,
 } as const;
 
 /** Modal preferences dialog for editor settings. */
@@ -141,6 +142,13 @@ export class SettingsDialog {
       this.initial.showBreadcrumbs,
       y,
     );
+    y += ROW;
+    this.addCheckbox(
+      "Show symbol breadcrumbs",
+      CHECK_IDS.showSymbolBreadcrumbs,
+      this.initial.showSymbolBreadcrumbs,
+      y,
+    );
 
     const btnY = DLG_HEIGHT - MARGIN - BTN_H - 8;
     const okX = DLG_WIDTH - MARGIN - BTN_W * 2 - 8;
@@ -229,6 +237,7 @@ export class SettingsDialog {
       autoCloseBrackets: this.isChecked(CHECK_IDS.autoCloseBrackets),
       bracketMatching: this.isChecked(CHECK_IDS.bracketMatching),
       showBreadcrumbs: this.isChecked(CHECK_IDS.showBreadcrumbs),
+      showSymbolBreadcrumbs: this.isChecked(CHECK_IDS.showSymbolBreadcrumbs),
     };
   }
 
