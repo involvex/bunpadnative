@@ -8,7 +8,6 @@ import User32 from "@bun-win32/user32";
 
 import { SettingsStore } from "../src/app/settings";
 import { MainWindow } from "../src/app/window";
-import { agentLog } from "../src/debug/agentLog";
 import {
   isSettingsDialogOpen,
   getActiveSettingsDialogHwnd,
@@ -75,14 +74,6 @@ if (!isSettingsDialogOpen()) {
 }
 
 const dialogHwnd = getActiveSettingsDialogHwnd();
-agentLog(
-  "settings-save-probe.ts",
-  "Sending OK to preferences dialog",
-  { dialogHwnd: String(dialogHwnd) },
-  "H7",
-  "save-probe",
-);
-
 User32.SendMessageW(dialogHwnd, WM_COMMAND, 1n, 0n);
 
 for (let i = 0; i < 40; i += 1) {
@@ -99,14 +90,6 @@ if (!User32.IsWindowEnabled(win.handle)) {
   win.destroy();
   throw new Error("Owner window stayed disabled after save");
 }
-
-agentLog(
-  "settings-save-probe.ts",
-  "Save probe completed without crash",
-  { ownerEnabled: true },
-  "H7",
-  "save-probe",
-);
 
 win.destroy();
 console.log("settings-save-probe ok");

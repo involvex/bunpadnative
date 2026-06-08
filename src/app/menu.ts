@@ -53,6 +53,14 @@ export enum MenuCommand {
   SettingsOpenPluginsFolder = 1704,
   SettingsOpenExtensionsFolder = 1705,
   SettingsInstallFromMarketplace = 1706,
+  SettingsInstallPluginFile = 1707,
+  SettingsInstallPluginFolder = 1708,
+}
+
+export enum TrayCommand {
+  Show = 2001,
+  Preferences = 2002,
+  Exit = 2003,
 }
 
 export type AppMenus = {
@@ -60,10 +68,14 @@ export type AppMenus = {
   editMenu: bigint;
   viewMenu: bigint;
   settingsMenu: bigint;
+  editorMenu: bigint;
   themeMenu: bigint;
+  pluginsExtMenu: bigint;
+  foldersMenu: bigint;
   pluginsMenu: bigint;
   recentMenu: bigint;
   contextMenu: bigint;
+  trayMenu: bigint;
   accelTable: bigint;
   retain: Buffer[];
 };
@@ -229,6 +241,30 @@ const buildContextMenu = (retain: Buffer[]): bigint => {
   return menu;
 };
 
+/** Tray icon context menu (Show, Preferences, Exit). */
+export const createTrayMenu = (retain: Buffer[]): bigint => {
+  const menu = User32.CreatePopupMenu();
+  if (!menu) {
+    throw new Error("CreatePopupMenu failed for tray menu");
+  }
+
+  const item = (text: string, command: TrayCommand): void => {
+    User32.AppendMenuW(
+      menu,
+      MF_STRING,
+      BigInt(command),
+      ffiPtr(appendLabel(retain, text)),
+    );
+  };
+
+  item("Show BunPad", TrayCommand.Show);
+  item("Preferences...", TrayCommand.Preferences);
+  User32.AppendMenuW(menu, MF_SEPARATOR, 0n, null);
+  item("Exit", TrayCommand.Exit);
+
+  return menu;
+};
+
 /** Build popup menus and keyboard accelerator table for the custom menu bar. */
 export const createAppMenus = (
   themes: ThemeSummary[],
@@ -241,7 +277,10 @@ export const createAppMenus = (
   const editMenu = User32.CreatePopupMenu();
   const viewMenu = User32.CreatePopupMenu();
   const settingsMenu = User32.CreatePopupMenu();
+  const editorMenu = User32.CreatePopupMenu();
   const themeMenu = User32.CreatePopupMenu();
+  const pluginsExtMenu = User32.CreatePopupMenu();
+  const foldersMenu = User32.CreatePopupMenu();
   const languageMenu = User32.CreatePopupMenu();
   const pluginsMenu = User32.CreatePopupMenu();
   const recentMenu = User32.CreatePopupMenu();
@@ -251,7 +290,10 @@ export const createAppMenus = (
     !editMenu ||
     !viewMenu ||
     !settingsMenu ||
+    !editorMenu ||
     !themeMenu ||
+    !pluginsExtMenu ||
+    !foldersMenu ||
     !languageMenu ||
     !pluginsMenu ||
     !recentMenu
@@ -308,35 +350,71 @@ export const createAppMenus = (
   item(languageMenu, "&Markdown", MenuCommand.LanguageMarkdown);
 
   populateThemeMenu(themeMenu, themes, retain);
-  item(settingsMenu, "&Preferences...", MenuCommand.SettingsPreferences);
-  User32.AppendMenuW(settingsMenu, MF_SEPARATOR, 0n, null);
+
+  item(editorMenu, "&Preferences...", MenuCommand.SettingsPreferences);
+  User32.AppendMenuW(
+    settingsMenu,
+    MF_POPUP,
+    editorMenu,
+    ffiPtr(appendLabel(retain, "&Editor")),
+  );
   User32.AppendMenuW(
     settingsMenu,
     MF_POPUP,
     themeMenu,
     ffiPtr(appendLabel(retain, "&Themes")),
   );
-  User32.AppendMenuW(settingsMenu, MF_SEPARATOR, 0n, null);
-  item(settingsMenu, "Install &Plugin...", MenuCommand.SettingsInstallPlugin);
+
   item(
-    settingsMenu,
+    pluginsExtMenu,
+    "Install Plugin from &File...",
+    MenuCommand.SettingsInstallPluginFile,
+  );
+  item(
+    pluginsExtMenu,
+    "Install Plugin from &Folder...",
+    MenuCommand.SettingsInstallPluginFolder,
+  );
+  item(
+    pluginsExtMenu,
     "Import VS Code &Extension...",
     MenuCommand.SettingsImportExtension,
   );
   item(
-    settingsMenu,
-    "Install Extension from &Marketplace...",
+    pluginsExtMenu,
+    "Install from &Marketplace...",
     MenuCommand.SettingsInstallFromMarketplace,
   );
-  item(
+  User32.AppendMenuW(pluginsExtMenu, MF_SEPARATOR, 0n, null);
+  item(pluginsExtMenu, "Reload BunPad &Plugins", MenuCommand.PluginsReload);
+  User32.AppendMenuW(
+    pluginsExtMenu,
+    MF_STRING,
+    BigInt(ExtensionMenuCommand.Reload),
+    ffiPtr(appendLabel(retain, "Reload VS Code &Extensions")),
+  );
+  User32.AppendMenuW(
     settingsMenu,
+    MF_POPUP,
+    pluginsExtMenu,
+    ffiPtr(appendLabel(retain, "Plugins && &Extensions")),
+  );
+
+  item(
+    foldersMenu,
     "Open Plugins &Folder",
     MenuCommand.SettingsOpenPluginsFolder,
   );
   item(
-    settingsMenu,
+    foldersMenu,
     "Open Extensions Fo&lder",
     MenuCommand.SettingsOpenExtensionsFolder,
+  );
+  User32.AppendMenuW(
+    settingsMenu,
+    MF_POPUP,
+    foldersMenu,
+    ffiPtr(appendLabel(retain, "&Folders")),
   );
 
   item(pluginsMenu, "&Reload BunPad Plugins", MenuCommand.PluginsReload);
@@ -373,16 +451,21 @@ export const createAppMenus = (
   retain.push(accelBuf);
 
   const contextMenu = buildContextMenu(retain);
+  const trayMenu = createTrayMenu(retain);
 
   return {
     fileMenu,
     editMenu,
     viewMenu,
     settingsMenu,
+    editorMenu,
     themeMenu,
+    pluginsExtMenu,
+    foldersMenu,
     pluginsMenu,
     recentMenu,
     contextMenu,
+    trayMenu,
     accelTable,
     retain,
   };

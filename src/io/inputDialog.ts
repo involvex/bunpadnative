@@ -2,10 +2,17 @@ import User32, { WindowStyles } from "@bun-win32/user32";
 import { JSCallback } from "bun:ffi";
 import type { Pointer } from "bun:ffi";
 
+import { beginModalDialog, endModalDialog } from "../ui/modalGuard";
+import {
+  CS_HREDRAW,
+  CS_VREDRAW,
+  WM_CLOSE,
+  WM_COMMAND,
+  WM_DESTROY,
+} from "../win32/constants";
 import { encodeWide, ffiPtr } from "../win32/strings";
 import { pointerToBigInt } from "../win32/pointers";
 import { packWndClassEx } from "../win32/wndclass";
-import { CS_HREDRAW, CS_VREDRAW, WM_COMMAND } from "../win32/constants";
 
 const NULL = 0n;
 const NULL_PTR = null as unknown as Pointer;
@@ -49,7 +56,9 @@ export class InputDialog {
   private primaryEdit = 0n;
   private secondaryEdit = 0n;
   private resolve: ((value: DialogResult | null) => void) | null = null;
-  private destroyed = false;
+  private finalized = false;
+  private closing = false;
+  private savedResult: DialogResult | null = null;
 
   constructor(
     private readonly title: string,
@@ -74,9 +83,11 @@ export class InputDialog {
     return new Promise((resolve) => {
       this.resolve = resolve;
       this.owner = owner;
+      beginModalDialog();
 
       const atom = User32.RegisterClassExW(ffiPtr(this.wndClassBuf));
       if (!atom) {
+        endModalDialog();
         resolve(null);
         return;
       }
@@ -103,6 +114,7 @@ export class InputDialog {
       if (!this.hwnd) {
         User32.EnableWindow(owner, 1);
         User32.UnregisterClassW(ffiPtr(this.classNameBuf), NULL);
+        endModalDialog();
         resolve(null);
         return;
       }
@@ -225,27 +237,38 @@ export class InputDialog {
     return buf.toString("utf16le").replace(/\0.*$/, "");
   }
 
-  private finish(result: DialogResult | null): void {
-    if (!this.resolve) {
-      return;
-    }
-
-    const resolve = this.resolve;
-    this.resolve = null;
-    this.close();
-    resolve(result);
+  private resultFromInputs(): DialogResult {
+    return {
+      primary: this.readEditText(this.primaryEdit),
+      secondary: this.secondaryEdit
+        ? this.readEditText(this.secondaryEdit)
+        : "",
+    };
   }
 
-  private close(): void {
-    if (this.destroyed) {
+  private beginClose(result: DialogResult | null): void {
+    if (this.closing) {
       return;
     }
-    this.destroyed = true;
+    this.closing = true;
+    this.savedResult = result;
 
     if (this.hwnd) {
       User32.DestroyWindow(this.hwnd);
-      this.hwnd = 0n;
+      return;
     }
+
+    this.finalizeClose();
+  }
+
+  private finalizeClose(): void {
+    if (this.finalized) {
+      return;
+    }
+    this.finalized = true;
+
+    this.hwnd = 0n;
+    endModalDialog();
 
     if (this.owner) {
       User32.EnableWindow(this.owner, 1);
@@ -253,7 +276,18 @@ export class InputDialog {
     }
 
     User32.UnregisterClassW(ffiPtr(this.classNameBuf), NULL);
-    this.wndProc.close();
+
+    const resolve = this.resolve;
+    const result = this.savedResult;
+    this.resolve = null;
+
+    if (resolve) {
+      resolve(result);
+    }
+
+    queueMicrotask(() => {
+      this.wndProc.close();
+    });
   }
 
   private handleMessage(
@@ -266,26 +300,23 @@ export class InputDialog {
       case WM_COMMAND: {
         const commandId = Number(wParam & 0xffffn);
         if (commandId === IDOK) {
-          this.finish({
-            primary: this.readEditText(this.primaryEdit),
-            secondary: this.secondaryEdit
-              ? this.readEditText(this.secondaryEdit)
-              : "",
-          });
+          this.beginClose(this.resultFromInputs());
           return 0n;
         }
         if (commandId === IDCANCEL) {
-          this.finish(null);
+          this.beginClose(null);
           return 0n;
         }
         return 0n;
       }
 
-      case 0x0010: // WM_CLOSE
-        this.finish(null);
+      case WM_CLOSE:
+        this.beginClose(null);
         return 0n;
 
-      case 0x0002: // WM_DESTROY
+      case WM_DESTROY:
+        this.hwnd = 0n;
+        this.finalizeClose();
         return 0n;
 
       default:

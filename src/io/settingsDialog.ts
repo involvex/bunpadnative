@@ -2,7 +2,6 @@ import User32, { WindowStyles } from "@bun-win32/user32";
 import { JSCallback } from "bun:ffi";
 import type { Pointer } from "bun:ffi";
 
-import { agentLog } from "../debug/agentLog";
 import { beginModalDialog, endModalDialog } from "../ui/modalGuard";
 import type { EditorSettings } from "../theme/types";
 import {
@@ -128,12 +127,6 @@ export class SettingsDialog {
         User32.UnregisterClassW(ffiPtr(this.classNameBuf), NULL);
         User32.UnregisterClassW(ffiPtr(this.classNameBuf), NULL);
         this.releaseActiveSlot();
-        agentLog(
-          "settingsDialog.ts:show",
-          "CreateWindowExW failed",
-          { owner: String(owner) },
-          "H3",
-        );
         queueMicrotask(() => {
           this.wndProc.close();
         });
@@ -146,34 +139,6 @@ export class SettingsDialog {
       User32.ShowWindow(this.hwnd, 5);
       User32.SetForegroundWindow(this.hwnd);
       activeDialogHwnd = this.hwnd;
-
-      const winRect = Buffer.alloc(16);
-      const clientRect = Buffer.alloc(16);
-      User32.GetWindowRect(this.hwnd, ffiPtr(winRect));
-      User32.GetClientRect(this.hwnd, ffiPtr(clientRect));
-      agentLog(
-        "settingsDialog.ts:show",
-        "Preferences dialog shown",
-        {
-          hwnd: String(this.hwnd),
-          owner: String(owner),
-          ownerEnabled: User32.IsWindowEnabled(owner) !== 0,
-          foreground: String(User32.GetForegroundWindow()),
-          checkboxCount: this.checkboxes.size,
-          windowRect: {
-            left: winRect.readInt32LE(0),
-            top: winRect.readInt32LE(4),
-            right: winRect.readInt32LE(8),
-            bottom: winRect.readInt32LE(12),
-          },
-          clientRect: {
-            right: clientRect.readInt32LE(8),
-            bottom: clientRect.readInt32LE(12),
-          },
-        },
-        "H3",
-        "post-fix",
-      );
     });
   }
 
@@ -355,14 +320,6 @@ export class SettingsDialog {
     this.closing = true;
     this.savedResult = result;
 
-    agentLog(
-      "settingsDialog.ts:beginClose",
-      "Closing preferences dialog",
-      { saved: result !== null },
-      "H7",
-      "post-fix",
-    );
-
     if (this.hwnd) {
       User32.DestroyWindow(this.hwnd);
       return;
@@ -392,14 +349,6 @@ export class SettingsDialog {
     const result = this.savedResult;
     this.resolve = null;
 
-    agentLog(
-      "settingsDialog.ts:finalizeClose",
-      "Preferences dialog finalized",
-      { saved: result !== null },
-      "H7",
-      "post-fix",
-    );
-
     if (resolve) {
       resolve(result);
     }
@@ -418,13 +367,6 @@ export class SettingsDialog {
     switch (msg) {
       case WM_COMMAND: {
         const commandId = Number(wParam & 0xffffn);
-        agentLog(
-          "settingsDialog.ts:WM_COMMAND",
-          "Dialog command",
-          { commandId },
-          "H5",
-          "post-fix",
-        );
         if (commandId === IDOK) {
           this.beginClose(this.readSettings());
           return 0n;
@@ -456,13 +398,6 @@ export const showSettingsDialog = async (
   initial: EditorSettings,
 ): Promise<EditorSettings | null> => {
   if (activeDialog || openingDialog) {
-    agentLog(
-      "settingsDialog.ts:showSettingsDialog",
-      "Dialog already open; ignoring duplicate open",
-      {},
-      "H6",
-      "post-fix",
-    );
     return null;
   }
 

@@ -35,6 +35,7 @@ import {
   populateRecentMenu,
   populateThemeMenu,
   recentPathForCommand,
+  TrayCommand,
   type AppMenus,
 } from "./menu";
 import {
@@ -51,7 +52,6 @@ import {
   showSettingsDialog,
   closeActiveSettingsDialog,
 } from "../io/settingsDialog";
-import { agentLog } from "../debug/agentLog";
 import {
   showFolderDialog,
   showOpenJsonDialog,
@@ -80,6 +80,7 @@ import { vscodeBridge } from "../vscode/bridge";
 import type { ThemeController } from "../theme/controller";
 import { hexToColorRef } from "../theme/colors";
 import { MenuBar } from "../ui/menuBar";
+import { TrayIcon } from "../ui/trayIcon";
 import { BreadcrumbBar } from "../ui/breadcrumbBar";
 import { CompletionPopup } from "../ui/completionPopup";
 import { StatusBar } from "../ui/statusBar";
@@ -99,6 +100,9 @@ import {
   WM_CLOSE,
   WM_COMMAND,
   WM_APP_DEFER_COMMAND,
+  WM_TRAYICON,
+  WM_SYSCOMMAND,
+  SC_MINIMIZE,
 } from "../win32/constants";
 import {
   HWND_TOP,
@@ -107,6 +111,10 @@ import {
   STATUS_BAR_HEIGHT,
   SWP_NOMOVE,
   SWP_NOSIZE,
+  TPM_LEFTALIGN,
+  TPM_RETURNCMD,
+  TPM_TOPALIGN,
+  TPM_VERTICAL,
   WM_CTLCOLOREDIT,
 } from "../win32/layout";
 import { setTextColor } from "../win32/gdi32";
@@ -157,6 +165,9 @@ export class MainWindow {
   private lastReplaceNeedle = "";
   private lastReplaceWith = "";
   private closing = false;
+  private forceQuit = false;
+  private hiddenToTray = false;
+  private trayIcon: TrayIcon | null = null;
   private deferredCommandId: number | null = null;
   private readonly highlighter = new HighlightController();
   private pendingInitialFile: string | undefined;
@@ -286,6 +297,10 @@ export class MainWindow {
 
     User32.ShowWindow(this.hwnd, ShowWindowCommand.SW_SHOW);
     User32.UpdateWindow(this.hwnd);
+    if (process.env.BUNPAD_TEST !== "1") {
+      this.trayIcon = new TrayIcon(this.hwnd);
+      this.trayIcon.add();
+    }
     this.applyCurrentTheme();
     this.refreshTitle();
   }
@@ -397,12 +412,6 @@ export class MainWindow {
           return 0n;
         }
         this.deferredCommandId = commandId;
-        agentLog(
-          "window.ts:WM_APP_DEFER_COMMAND",
-          "Deferred menu command received",
-          { commandId },
-          "H1",
-        );
         void this.dispatchCommand(commandId).finally(() => {
           if (this.deferredCommandId === commandId) {
             this.deferredCommandId = null;
@@ -411,15 +420,40 @@ export class MainWindow {
         return 0n;
       }
 
+      case WM_TRAYICON: {
+        const action = this.trayIcon?.handleMessage(lParam);
+        if (action === "restore") {
+          this.restoreFromTray();
+        } else if (action === "context-menu") {
+          this.showTrayContextMenu();
+        }
+        return 0n;
+      }
+
+      case WM_SYSCOMMAND: {
+        const command = Number(wParam & 0xfff0n);
+        if (command === SC_MINIMIZE && process.env.BUNPAD_TEST !== "1") {
+          void this.handleHideRequest();
+          return 0n;
+        }
+        return User32.DefWindowProcW(hWnd, msg, wParam, lParam);
+      }
+
       case WM_CLOSE:
-        if (this.closing) {
+        if (this.closing || this.forceQuit) {
           User32.DestroyWindow(hWnd);
           return 0n;
         }
-        void this.handleCloseRequest();
+        if (process.env.BUNPAD_TEST === "1") {
+          void this.handleCloseRequest();
+          return 0n;
+        }
+        void this.handleHideRequest();
         return 0n;
 
       case MessageFilter.WM_DESTROY:
+        this.trayIcon?.remove();
+        this.trayIcon = null;
         closeActiveSettingsDialog();
         this.clearPendingTimers();
         this.hwnd = 0n;
@@ -758,6 +792,77 @@ export class MainWindow {
     User32.DestroyWindow(this.hwnd);
   }
 
+  private async handleHideRequest(): Promise<void> {
+    if (!this.document.dirty) {
+      this.hideToTray();
+      return;
+    }
+
+    const action = this.promptUnsavedChanges();
+    if (action === "cancel") {
+      return;
+    }
+    if (action === "save") {
+      const saved = await this.saveFile(false);
+      if (!saved) {
+        return;
+      }
+    }
+
+    this.hideToTray();
+  }
+
+  private hideToTray(): void {
+    if (!this.hwnd || this.hiddenToTray) {
+      return;
+    }
+    User32.ShowWindow(this.hwnd, ShowWindowCommand.SW_HIDE);
+    this.hiddenToTray = true;
+    this.trayIcon?.modify();
+  }
+
+  private restoreFromTray(): void {
+    if (!this.hwnd) {
+      return;
+    }
+    User32.ShowWindow(this.hwnd, ShowWindowCommand.SW_SHOW);
+    User32.SetForegroundWindow(this.hwnd);
+    if (this.editorHwnd) {
+      User32.SetFocus(this.editorHwnd);
+    }
+    this.hiddenToTray = false;
+  }
+
+  private async quitApp(): Promise<void> {
+    this.forceQuit = true;
+    await this.handleCloseRequest();
+  }
+
+  private showTrayContextMenu(): void {
+    if (!this.trayIcon) {
+      return;
+    }
+
+    const { x, y } = this.trayIcon.contextMenuPoint();
+    User32.SetForegroundWindow(this.hwnd);
+
+    const cmd = User32.TrackPopupMenu(
+      this.menus.trayMenu,
+      TPM_RETURNCMD | TPM_LEFTALIGN | TPM_TOPALIGN | TPM_VERTICAL,
+      x,
+      y,
+      0,
+      this.hwnd,
+      null,
+    );
+
+    User32.PostMessageW(this.hwnd, 0x0000, 0n, 0n);
+
+    if (cmd) {
+      User32.PostMessageW(this.hwnd, WM_APP_DEFER_COMMAND, BigInt(cmd), 0n);
+    }
+  }
+
   private refreshRecentMenu(): void {
     populateRecentMenu(
       this.menus.recentMenu,
@@ -1009,19 +1114,7 @@ export class MainWindow {
   }
 
   private async showPreferences(): Promise<void> {
-    agentLog(
-      "window.ts:showPreferences",
-      "Opening preferences dialog",
-      { owner: String(this.hwnd) },
-      "H2",
-    );
     if (!this.settingsStore) {
-      agentLog(
-        "window.ts:showPreferences",
-        "No settings store; aborting",
-        {},
-        "H2",
-      );
       return;
     }
 
@@ -1029,54 +1122,36 @@ export class MainWindow {
       this.hwnd,
       this.settingsStore.editor,
     );
-    agentLog(
-      "window.ts:showPreferences",
-      "Preferences dialog closed",
-      { saved: result !== null },
-      "H2",
-    );
     if (!result) {
       return;
     }
 
     await this.settingsStore.setEditorSettings(result);
-    agentLog(
-      "window.ts:showPreferences",
-      "Editor settings persisted",
-      { showBreadcrumbs: result.showBreadcrumbs },
-      "H8",
-      "post-fix",
-    );
     this.breadcrumbBar?.setVisible(result.showBreadcrumbs);
     this.layoutClient(this.hwnd);
-    agentLog(
-      "window.ts:showPreferences",
-      "Layout refreshed after save",
-      {},
-      "H8",
-      "post-fix",
-    );
     if (process.env.BUNPAD_TEST !== "1") {
       this.showInfo("Preferences saved.");
     }
-    agentLog(
-      "window.ts:showPreferences",
-      "Save flow completed",
-      {},
-      "H8",
-      "post-fix",
-    );
   }
 
-  private async installPlugin(): Promise<void> {
-    const folder = showFolderDialog(this.hwnd, "Select plugin folder");
-    const file = folder ? null : showOpenPluginDialog(this.hwnd);
-    const source = folder ?? file;
-    if (!source) {
+  private async installPluginFromFile(): Promise<void> {
+    const file = showOpenPluginDialog(this.hwnd);
+    if (!file) {
       return;
     }
 
-    const dest = await importPluginFolder(source);
+    const dest = await importPluginFolder(file);
+    await this.reloadPlugins();
+    this.showInfo(`Installed plugin to ${dest}`);
+  }
+
+  private async installPluginFromFolder(): Promise<void> {
+    const folder = showFolderDialog(this.hwnd, "Select plugin folder");
+    if (!folder) {
+      return;
+    }
+
+    const dest = await importPluginFolder(folder);
     await this.reloadPlugins();
     this.showInfo(`Installed plugin to ${dest}`);
   }
@@ -1278,7 +1353,7 @@ export class MainWindow {
           break;
 
         case MenuCommand.FileExit:
-          void this.handleCloseRequest();
+          void this.quitApp();
           break;
 
         case MenuCommand.EditUndo:
@@ -1343,7 +1418,25 @@ export class MainWindow {
           break;
 
         case MenuCommand.SettingsInstallPlugin:
-          await this.installPlugin();
+        case MenuCommand.SettingsInstallPluginFile:
+          await this.installPluginFromFile();
+          break;
+
+        case MenuCommand.SettingsInstallPluginFolder:
+          await this.installPluginFromFolder();
+          break;
+
+        case TrayCommand.Show:
+          this.restoreFromTray();
+          break;
+
+        case TrayCommand.Preferences:
+          this.restoreFromTray();
+          await this.showPreferences();
+          break;
+
+        case TrayCommand.Exit:
+          await this.quitApp();
           break;
 
         case MenuCommand.SettingsImportExtension:
@@ -1521,6 +1614,8 @@ export class MainWindow {
 
     closeActiveSettingsDialog();
     this.clearPendingTimers();
+    this.trayIcon?.remove();
+    this.trayIcon = null;
     this.themeController?.destroy();
     this.menuBar?.destroy();
     this.breadcrumbBar?.destroy();

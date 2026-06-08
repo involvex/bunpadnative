@@ -47,8 +47,32 @@ if (viewCount !== 1) {
     `View menu expected 1 item (Language Mode), got ${viewCount}`,
   );
 }
-if (settingsCount !== 9) {
-  throw new Error(`Settings menu expected 9 items, got ${settingsCount}`);
+if (settingsCount !== 4) {
+  throw new Error(
+    `Settings menu expected 4 submenu items, got ${settingsCount}`,
+  );
+}
+
+const editorCount = User32.GetMenuItemCount(menus.editorMenu);
+if (editorCount !== 1) {
+  throw new Error(`Editor submenu expected 1 item, got ${editorCount}`);
+}
+
+const pluginsExtCount = User32.GetMenuItemCount(menus.pluginsExtMenu);
+if (pluginsExtCount !== 7) {
+  throw new Error(
+    `Plugins & Extensions submenu expected 7 items, got ${pluginsExtCount}`,
+  );
+}
+
+const foldersCount = User32.GetMenuItemCount(menus.foldersMenu);
+if (foldersCount !== 2) {
+  throw new Error(`Folders submenu expected 2 items, got ${foldersCount}`);
+}
+
+const trayCount = User32.GetMenuItemCount(menus.trayMenu);
+if (trayCount !== 4) {
+  throw new Error(`Tray menu expected 4 items, got ${trayCount}`);
 }
 
 const themeMenuCount = User32.GetMenuItemCount(menus.themeMenu);
@@ -94,6 +118,8 @@ const ids = [
   MenuCommand.SettingsPreferences,
   MenuCommand.SettingsImportTheme,
   MenuCommand.SettingsInstallPlugin,
+  MenuCommand.SettingsInstallPluginFile,
+  MenuCommand.SettingsInstallPluginFolder,
   MenuCommand.SettingsImportExtension,
   MenuCommand.SettingsOpenPluginsFolder,
   MenuCommand.SettingsOpenExtensionsFolder,

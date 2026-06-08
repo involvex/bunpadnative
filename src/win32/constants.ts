@@ -11,6 +11,14 @@ export const WM_DESTROY = 0x0002;
 /** App-private: defer menu command dispatch until after TrackPopupMenu returns. */
 export const WM_APP_DEFER_COMMAND = 0x8000 + 100;
 
+/** Shell_NotifyIconW callback message (WM_USER + 1). */
+export const WM_TRAYICON = 0x0400 + 1;
+
+export const WM_SYSCOMMAND = 0x0112;
+
+/** WM_SYSCOMMAND minimize — hide to tray instead of taskbar minimize. */
+export const SC_MINIMIZE = 0xf020;
+
 /** Dialog class background — (HBRUSH)(COLOR_BTNFACE + 1). */
 export const DIALOG_BACKGROUND_BRUSH = 16;
 

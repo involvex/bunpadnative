@@ -45,6 +45,7 @@ if (compile.exitCode !== 0) {
 
 console.log("[build] copying runtime assets");
 await Promise.all([
+  copyDir(join(root, "assets"), join(dist, "assets")),
   copyDir(join(root, "themes"), join(dist, "themes")),
   copyDir(join(root, "plugins"), join(dist, "plugins")),
   copyDir(join(root, "extensions"), join(dist, "extensions")),

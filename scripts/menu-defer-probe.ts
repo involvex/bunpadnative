@@ -9,7 +9,6 @@ import User32 from "@bun-win32/user32";
 import { MenuCommand } from "../src/app/menu";
 import { SettingsStore } from "../src/app/settings";
 import { MainWindow } from "../src/app/window";
-import { agentLog } from "../src/debug/agentLog";
 import {
   closeActiveSettingsDialog,
   isSettingsDialogOpen,
@@ -55,14 +54,6 @@ for (let i = 0; i < 10; i += 1) {
 
 User32.SetForegroundWindow(win.handle);
 
-agentLog(
-  "menu-defer-probe.ts",
-  "Posting deferred SettingsPreferences command",
-  { commandId: MenuCommand.SettingsPreferences },
-  "H1",
-  "menu-defer",
-);
-
 User32.PostMessageW(
   win.handle,
   WM_APP_DEFER_COMMAND,
@@ -74,17 +65,6 @@ for (let i = 0; i < 60; i += 1) {
   pumpOnce(ctx);
   await Bun.sleep(16);
 }
-
-agentLog(
-  "menu-defer-probe.ts",
-  "After deferred command pump",
-  {
-    dialogOpen: isSettingsDialogOpen(),
-    ownerEnabled: User32.IsWindowEnabled(win.handle) !== 0,
-  },
-  "H1",
-  "menu-defer",
-);
 
 if (!isSettingsDialogOpen()) {
   win.destroy();

@@ -35,3 +35,20 @@ export const pointerToBigInt = (value: Pointer | FfiBuffer): bigint => {
 
   return BigInt(ptr(value as FfiBuffer));
 };
+
+/** Reject small integers mistaken for Win32 pointers after bad FFI calls. */
+export const isPlausibleFfiPointer = (value: unknown): boolean => {
+  if (value === null || value === undefined) {
+    return false;
+  }
+
+  if (typeof value === "bigint") {
+    return value > 0xffffn;
+  }
+
+  if (typeof value === "number") {
+    return value > 0xffff;
+  }
+
+  return isPlausibleFfiPointer(pointerToBigInt(value as Pointer | FfiBuffer));
+};

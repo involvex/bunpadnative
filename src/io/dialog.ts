@@ -1,8 +1,9 @@
 import Comdlg32, { OpenFileNameFlag } from "@bun-win32/comdlg32";
 import { dlopen, FFIType } from "bun:ffi";
+import type { Pointer } from "bun:ffi";
 
 import { encodeWide, ffiPtr } from "../win32/strings";
-import { pointerToBigInt } from "../win32/pointers";
+import { isPlausibleFfiPointer, pointerToBigInt } from "../win32/pointers";
 
 const OPENFILENAMEW_SIZE = 152;
 const PATH_BUF_CHARS = 1024;
@@ -39,11 +40,18 @@ const shell32 = dlopen("shell32.dll", {
   },
 });
 
+const ole32 = dlopen("ole32.dll", {
+  CoTaskMemFree: {
+    args: [FFIType.ptr],
+    returns: FFIType.void,
+  },
+});
+
 const BIF_RETURNONLYFSDIRS = 0x0001;
 const BIF_NEWDIALOGSTYLE = 0x0040;
 
 /** Pack OPENFILENAMEW (152 bytes, x64) for comdlg32 file pickers. */
-const packOpenFileName = (
+export const packOpenFileName = (
   owner: bigint,
   fileBuf: Buffer,
   fileTitleBuf: Buffer,
@@ -52,6 +60,7 @@ const packOpenFileName = (
   flags: number,
   filter: Buffer,
   defaultFile?: string,
+  defaultExtension?: string | null,
 ): Buffer => {
   if (defaultFile) {
     fileBuf.write(defaultFile, 0, "utf16le");
@@ -76,8 +85,10 @@ const packOpenFileName = (
   view.setBigUint64(0x58, pointerToBigInt(title), true);
   view.setUint32(0x60, flags, true);
 
-  const defExt = encodeWide("txt");
-  view.setBigUint64(0x68, pointerToBigInt(defExt), true);
+  if (defaultExtension) {
+    const defExt = encodeWide(defaultExtension);
+    view.setBigUint64(0x68, pointerToBigInt(defExt), true);
+  }
 
   return ofn;
 };
@@ -90,6 +101,7 @@ const pickFile = (
   titleText: string,
   initialPath: string | null | undefined,
   filter: Buffer,
+  defaultExtension?: string | null,
 ): string | null => {
   const fileBuf = Buffer.alloc(PATH_BUF_CHARS * 2);
   const fileTitleBuf = Buffer.alloc(TITLE_BUF_CHARS * 2);
@@ -109,6 +121,8 @@ const pickFile = (
       OpenFileNameFlag.OFN_PATHMUSTEXIST |
       OpenFileNameFlag.OFN_HIDEREADONLY,
     filter,
+    undefined,
+    defaultExtension,
   );
 
   if (!Comdlg32.GetOpenFileNameW(ffiPtr(ofn))) {
@@ -122,24 +136,31 @@ const pickFile = (
 export const showOpenDialog = (
   owner: bigint,
   initialPath?: string | null,
-): string | null => pickFile(owner, "Open", initialPath, TEXT_FILTER);
+): string | null => pickFile(owner, "Open", initialPath, TEXT_FILTER, "txt");
 
 export const showOpenJsonDialog = (
   owner: bigint,
   initialPath?: string | null,
-): string | null => pickFile(owner, "Import Theme", initialPath, JSON_FILTER);
+): string | null =>
+  pickFile(owner, "Import Theme", initialPath, JSON_FILTER, "json");
 
 export const showOpenPluginDialog = (
   owner: bigint,
   initialPath?: string | null,
 ): string | null =>
-  pickFile(owner, "Install Plugin", initialPath, PLUGIN_FILTER);
+  pickFile(owner, "Install Plugin", initialPath, PLUGIN_FILTER, "ts");
 
 export const showOpenManifestDialog = (
   owner: bigint,
   initialPath?: string | null,
 ): string | null =>
-  pickFile(owner, "Import VS Code Extension", initialPath, MANIFEST_FILTER);
+  pickFile(
+    owner,
+    "Import VS Code Extension",
+    initialPath,
+    MANIFEST_FILTER,
+    null,
+  );
 
 /** SHBrowseForFolderW folder picker; returns absolute path or null. */
 export const showFolderDialog = (
@@ -160,18 +181,15 @@ export const showFolderDialog = (
   view.setBigUint64(48, 0n, true);
   view.setInt32(56, 0, true);
 
-  const pidl = shell32.symbols.SHBrowseForFolderW(
-    pointerToBigInt(bi) as unknown as never,
-  );
-  if (!pidl) {
+  const pidl = shell32.symbols.SHBrowseForFolderW(ffiPtr(bi)) as Pointer;
+  if (!pidl || !isPlausibleFfiPointer(pidl)) {
     return null;
   }
 
   const pathBuf = Buffer.alloc(PATH_BUF_CHARS * 2);
-  const ok = shell32.symbols.SHGetPathFromIDListW(
-    pidl,
-    pointerToBigInt(pathBuf) as unknown as never,
-  );
+  const ok = shell32.symbols.SHGetPathFromIDListW(pidl, ffiPtr(pathBuf));
+  ole32.symbols.CoTaskMemFree(pidl);
+
   if (!ok) {
     return null;
   }
@@ -203,6 +221,7 @@ export const showSaveDialog = (
       OpenFileNameFlag.OFN_PATHMUSTEXIST,
     TEXT_FILTER,
     initialPath ?? undefined,
+    "txt",
   );
 
   if (!Comdlg32.GetSaveFileNameW(ffiPtr(ofn))) {
