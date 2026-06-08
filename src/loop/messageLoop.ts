@@ -1,5 +1,6 @@
 import User32, { PeekMessageRemoveFlag } from "@bun-win32/user32";
 
+import { isModalDialogOpen } from "../ui/modalGuard";
 import { ffiPtr } from "../win32/pointers";
 
 /** MSG structure is 48 bytes on x64. */
@@ -11,7 +12,7 @@ export type MessagePumpContext = {
 };
 
 const dispatchMessage = (msg: Buffer, ctx?: MessagePumpContext): void => {
-  if (ctx?.hAccel && ctx.hwnd) {
+  if (ctx?.hAccel && ctx.hwnd && !isModalDialogOpen()) {
     const translated = User32.TranslateAcceleratorW(
       ctx.hwnd,
       ctx.hAccel,

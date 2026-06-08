@@ -14,6 +14,8 @@ import {
   setTextColor,
   textOutW,
 } from "../win32/gdi32";
+import { WM_APP_DEFER_COMMAND } from "../win32/constants";
+import { agentLog } from "../debug/agentLog";
 import {
   MENU_BAR_HEIGHT,
   TPM_LEFTALIGN,
@@ -61,7 +63,6 @@ export class MenuBar {
   constructor(
     private readonly parentHwnd: bigint,
     private readonly entries: MenuBarEntry[],
-    private readonly onCommand: (commandId: number) => void,
     theme: ThemeDefinition,
   ) {
     this.theme = theme;
@@ -331,9 +332,28 @@ export class MenuBar {
 
     this.openIndex = -1;
     User32.InvalidateRect(this.hwnd, null, 1);
+    User32.SetForegroundWindow(this.parentHwnd);
 
     if (cmd) {
-      this.onCommand(cmd);
+      agentLog(
+        "menuBar.ts:openMenu",
+        "TrackPopupMenu returned command; deferring dispatch",
+        { index, cmd },
+        "H1",
+      );
+      User32.PostMessageW(
+        this.parentHwnd,
+        WM_APP_DEFER_COMMAND,
+        BigInt(cmd),
+        0n,
+      );
+    } else {
+      agentLog(
+        "menuBar.ts:openMenu",
+        "TrackPopupMenu returned zero",
+        { index },
+        "H1",
+      );
     }
 
     return cmd;

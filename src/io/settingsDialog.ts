@@ -2,10 +2,18 @@ import User32, { WindowStyles } from "@bun-win32/user32";
 import { JSCallback } from "bun:ffi";
 import type { Pointer } from "bun:ffi";
 
+import { agentLog } from "../debug/agentLog";
+import { beginModalDialog, endModalDialog } from "../ui/modalGuard";
 import type { EditorSettings } from "../theme/types";
+import {
+  CS_HREDRAW,
+  CS_VREDRAW,
+  WM_CLOSE,
+  WM_COMMAND,
+  WM_DESTROY,
+} from "../win32/constants";
 import { encodeWide, ffiPtr } from "../win32/strings";
 import { packWndClassEx } from "../win32/wndclass";
-import { CS_HREDRAW, CS_VREDRAW, WM_COMMAND } from "../win32/constants";
 
 const NULL = 0n;
 const NULL_PTR = null as unknown as Pointer;
@@ -20,6 +28,7 @@ const WS_CHILD = WindowStyles.WS_CHILD;
 const WS_VISIBLE = WindowStyles.WS_VISIBLE;
 const WS_TABSTOP = 0x0001_0000;
 const BS_AUTOCHECKBOX = 0x0003;
+const BS_DEFPUSHBUTTON = 0x0001;
 const BS_PUSHBUTTON = 0x0000_0000;
 const SS_LEFT = 0x0000_0000;
 
@@ -38,6 +47,19 @@ const CHECK_IDS = {
   showSymbolBreadcrumbs: 105,
 } as const;
 
+let activeDialog: SettingsDialog | null = null;
+let openingDialog = false;
+let activeDialogHwnd = 0n;
+
+export const getActiveSettingsDialogHwnd = (): bigint => activeDialogHwnd;
+
+/** Close any open preferences dialog (e.g. during app shutdown). */
+export const closeActiveSettingsDialog = (): void => {
+  activeDialog?.forceClose();
+};
+
+export const isSettingsDialogOpen = (): boolean => activeDialog !== null;
+
 /** Modal preferences dialog for editor settings. */
 export class SettingsDialog {
   private readonly classNameBuf = encodeWide(`BunPadSettings_${process.pid}`);
@@ -49,7 +71,9 @@ export class SettingsDialog {
   private owner = 0n;
   private hwnd = 0n;
   private resolve: ((value: EditorSettings | null) => void) | null = null;
-  private destroyed = false;
+  private finalized = false;
+  private closing = false;
+  private savedResult: EditorSettings | null = null;
   private checkboxes = new Map<number, bigint>();
 
   constructor(private readonly initial: EditorSettings) {
@@ -70,9 +94,12 @@ export class SettingsDialog {
     return new Promise((resolve) => {
       this.resolve = resolve;
       this.owner = owner;
+      activeDialog = this;
+      beginModalDialog();
 
       const atom = User32.RegisterClassExW(ffiPtr(this.wndClassBuf));
       if (!atom) {
+        this.releaseActiveSlot();
         resolve(null);
         return;
       }
@@ -99,6 +126,17 @@ export class SettingsDialog {
       if (!this.hwnd) {
         User32.EnableWindow(owner, 1);
         User32.UnregisterClassW(ffiPtr(this.classNameBuf), NULL);
+        User32.UnregisterClassW(ffiPtr(this.classNameBuf), NULL);
+        this.releaseActiveSlot();
+        agentLog(
+          "settingsDialog.ts:show",
+          "CreateWindowExW failed",
+          { owner: String(owner) },
+          "H3",
+        );
+        queueMicrotask(() => {
+          this.wndProc.close();
+        });
         resolve(null);
         return;
       }
@@ -107,7 +145,47 @@ export class SettingsDialog {
       this.centerOnOwner();
       User32.ShowWindow(this.hwnd, 5);
       User32.SetForegroundWindow(this.hwnd);
+      activeDialogHwnd = this.hwnd;
+
+      const winRect = Buffer.alloc(16);
+      const clientRect = Buffer.alloc(16);
+      User32.GetWindowRect(this.hwnd, ffiPtr(winRect));
+      User32.GetClientRect(this.hwnd, ffiPtr(clientRect));
+      agentLog(
+        "settingsDialog.ts:show",
+        "Preferences dialog shown",
+        {
+          hwnd: String(this.hwnd),
+          owner: String(owner),
+          ownerEnabled: User32.IsWindowEnabled(owner) !== 0,
+          foreground: String(User32.GetForegroundWindow()),
+          checkboxCount: this.checkboxes.size,
+          windowRect: {
+            left: winRect.readInt32LE(0),
+            top: winRect.readInt32LE(4),
+            right: winRect.readInt32LE(8),
+            bottom: winRect.readInt32LE(12),
+          },
+          clientRect: {
+            right: clientRect.readInt32LE(8),
+            bottom: clientRect.readInt32LE(12),
+          },
+        },
+        "H3",
+        "post-fix",
+      );
     });
+  }
+
+  forceClose(): void {
+    this.beginClose(null);
+  }
+
+  private releaseActiveSlot(): void {
+    if (activeDialog === this) {
+      activeDialog = null;
+    }
+    endModalDialog();
   }
 
   private createControls(): void {
@@ -152,8 +230,8 @@ export class SettingsDialog {
 
     const btnY = DLG_HEIGHT - MARGIN - BTN_H - 8;
     const okX = DLG_WIDTH - MARGIN - BTN_W * 2 - 8;
-    this.addButton("OK", IDOK, okX, btnY);
-    this.addButton("Cancel", IDCANCEL, okX + BTN_W + 8, btnY);
+    this.addButton("OK", IDOK, okX, btnY, true);
+    this.addButton("Cancel", IDCANCEL, okX + BTN_W + 8, btnY, false);
   }
 
   private addStatic(text: string, y: number): void {
@@ -203,14 +281,23 @@ export class SettingsDialog {
     this.checkboxes.set(id, hwnd);
   }
 
-  private addButton(caption: string, id: number, x: number, y: number): void {
+  private addButton(
+    caption: string,
+    id: number,
+    x: number,
+    y: number,
+    isDefault: boolean,
+  ): void {
     const label = encodeWide(caption);
     this.retain.push(label);
     User32.CreateWindowExW(
       0,
       ffiPtr(BUTTON_CLASS),
       ffiPtr(label),
-      WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
+      WS_CHILD |
+        WS_VISIBLE |
+        WS_TABSTOP |
+        (isDefault ? BS_DEFPUSHBUTTON : BS_PUSHBUTTON),
       x,
       y,
       BTN_W,
@@ -243,41 +330,56 @@ export class SettingsDialog {
 
   private centerOnOwner(): void {
     const ownerRect = Buffer.alloc(16);
-    const dlgRect = Buffer.alloc(16);
     User32.GetWindowRect(this.owner, ffiPtr(ownerRect));
-    User32.GetWindowRect(this.hwnd, ffiPtr(dlgRect));
 
     const ownerW = ownerRect.readInt32LE(8) - ownerRect.readInt32LE(0);
     const ownerH = ownerRect.readInt32LE(12) - ownerRect.readInt32LE(4);
-    const dlgW = dlgRect.readInt32LE(8) - dlgRect.readInt32LE(0);
-    const dlgH = dlgRect.readInt32LE(12) - dlgRect.readInt32LE(4);
 
-    const x = ownerRect.readInt32LE(0) + Math.max(0, (ownerW - dlgW) / 2);
-    const y = ownerRect.readInt32LE(4) + Math.max(0, (ownerH - dlgH) / 2);
-    User32.SetWindowPos(this.hwnd, 0n, x, y, 0, 0, 0x0040);
+    const x = ownerRect.readInt32LE(0) + Math.max(0, (ownerW - DLG_WIDTH) / 2);
+    const y = ownerRect.readInt32LE(4) + Math.max(0, (ownerH - DLG_HEIGHT) / 2);
+    User32.SetWindowPos(
+      this.hwnd,
+      this.owner,
+      x,
+      y,
+      DLG_WIDTH,
+      DLG_HEIGHT,
+      0x0040,
+    );
   }
 
-  private finish(result: EditorSettings | null): void {
-    if (!this.resolve) {
+  private beginClose(result: EditorSettings | null): void {
+    if (this.closing) {
       return;
     }
+    this.closing = true;
+    this.savedResult = result;
 
-    const resolve = this.resolve;
-    this.resolve = null;
-    this.close();
-    resolve(result);
-  }
-
-  private close(): void {
-    if (this.destroyed) {
-      return;
-    }
-    this.destroyed = true;
+    agentLog(
+      "settingsDialog.ts:beginClose",
+      "Closing preferences dialog",
+      { saved: result !== null },
+      "H7",
+      "post-fix",
+    );
 
     if (this.hwnd) {
       User32.DestroyWindow(this.hwnd);
-      this.hwnd = 0n;
+      return;
     }
+
+    this.finalizeClose();
+  }
+
+  private finalizeClose(): void {
+    if (this.finalized) {
+      return;
+    }
+    this.finalized = true;
+
+    this.hwnd = 0n;
+    activeDialogHwnd = 0n;
+    this.releaseActiveSlot();
 
     if (this.owner) {
       User32.EnableWindow(this.owner, 1);
@@ -285,7 +387,26 @@ export class SettingsDialog {
     }
 
     User32.UnregisterClassW(ffiPtr(this.classNameBuf), NULL);
-    this.wndProc.close();
+
+    const resolve = this.resolve;
+    const result = this.savedResult;
+    this.resolve = null;
+
+    agentLog(
+      "settingsDialog.ts:finalizeClose",
+      "Preferences dialog finalized",
+      { saved: result !== null },
+      "H7",
+      "post-fix",
+    );
+
+    if (resolve) {
+      resolve(result);
+    }
+
+    queueMicrotask(() => {
+      this.wndProc.close();
+    });
   }
 
   private handleMessage(
@@ -297,22 +418,31 @@ export class SettingsDialog {
     switch (msg) {
       case WM_COMMAND: {
         const commandId = Number(wParam & 0xffffn);
+        agentLog(
+          "settingsDialog.ts:WM_COMMAND",
+          "Dialog command",
+          { commandId },
+          "H5",
+          "post-fix",
+        );
         if (commandId === IDOK) {
-          this.finish(this.readSettings());
+          this.beginClose(this.readSettings());
           return 0n;
         }
         if (commandId === IDCANCEL) {
-          this.finish(null);
+          this.beginClose(null);
           return 0n;
         }
         return 0n;
       }
 
-      case 0x0010:
-        this.finish(null);
+      case WM_CLOSE:
+        this.beginClose(null);
         return 0n;
 
-      case 0x0002:
+      case WM_DESTROY:
+        this.hwnd = 0n;
+        this.finalizeClose();
         return 0n;
 
       default:
@@ -325,6 +455,22 @@ export const showSettingsDialog = async (
   owner: bigint,
   initial: EditorSettings,
 ): Promise<EditorSettings | null> => {
-  const dialog = new SettingsDialog(initial);
-  return dialog.show(owner);
+  if (activeDialog || openingDialog) {
+    agentLog(
+      "settingsDialog.ts:showSettingsDialog",
+      "Dialog already open; ignoring duplicate open",
+      {},
+      "H6",
+      "post-fix",
+    );
+    return null;
+  }
+
+  openingDialog = true;
+  try {
+    const dialog = new SettingsDialog(initial);
+    return await dialog.show(owner);
+  } finally {
+    openingDialog = false;
+  }
 };

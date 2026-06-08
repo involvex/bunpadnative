@@ -12,6 +12,7 @@ export const packWndClassEx = (
   wndProcPtr: Pointer,
   classNamePtr: Pointer | Buffer,
   style: number,
+  backgroundBrush = 0n,
 ): Buffer => {
   const wndClass = Buffer.alloc(80);
   const view = new DataView(wndClass.buffer);
@@ -24,7 +25,7 @@ export const packWndClassEx = (
   wndClass.writeBigUInt64LE(0n, 24);
   wndClass.writeBigUInt64LE(0n, 32);
   wndClass.writeBigUInt64LE(0n, 40);
-  wndClass.writeBigUInt64LE(0n, 48);
+  wndClass.writeBigUInt64LE(backgroundBrush, 48);
   wndClass.writeBigUInt64LE(0n, 56);
   wndClass.writeBigUInt64LE(pointerToBigInt(classNamePtr), 64);
   wndClass.writeBigUInt64LE(0n, 72);

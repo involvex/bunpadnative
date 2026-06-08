@@ -47,7 +47,11 @@ import {
 import { getAppRoot } from "./paths";
 import type { SettingsStore } from "./settings";
 import { showInputDialog, showReplaceDialog } from "../io/inputDialog";
-import { showSettingsDialog } from "../io/settingsDialog";
+import {
+  showSettingsDialog,
+  closeActiveSettingsDialog,
+} from "../io/settingsDialog";
+import { agentLog } from "../debug/agentLog";
 import {
   showFolderDialog,
   showOpenJsonDialog,
@@ -94,6 +98,7 @@ import {
   RICHEDIT_CLASS,
   WM_CLOSE,
   WM_COMMAND,
+  WM_APP_DEFER_COMMAND,
 } from "../win32/constants";
 import {
   HWND_TOP,
@@ -152,6 +157,7 @@ export class MainWindow {
   private lastReplaceNeedle = "";
   private lastReplaceWith = "";
   private closing = false;
+  private deferredCommandId: number | null = null;
   private readonly highlighter = new HighlightController();
   private pendingInitialFile: string | undefined;
   /** Skip EN_CHANGE dirty marking during programmatic editor updates. */
@@ -255,9 +261,6 @@ export class MainWindow {
         { label: "Settings", menu: this.menus.settingsMenu },
         { label: "Plugins", menu: this.menus.pluginsMenu },
       ],
-      (commandId) => {
-        void this.dispatchCommand(commandId);
-      },
       theme,
     );
     this.menuBar.create();
@@ -388,6 +391,26 @@ export class MainWindow {
         return 0n;
       }
 
+      case WM_APP_DEFER_COMMAND: {
+        const commandId = Number(wParam);
+        if (this.deferredCommandId === commandId) {
+          return 0n;
+        }
+        this.deferredCommandId = commandId;
+        agentLog(
+          "window.ts:WM_APP_DEFER_COMMAND",
+          "Deferred menu command received",
+          { commandId },
+          "H1",
+        );
+        void this.dispatchCommand(commandId).finally(() => {
+          if (this.deferredCommandId === commandId) {
+            this.deferredCommandId = null;
+          }
+        });
+        return 0n;
+      }
+
       case WM_CLOSE:
         if (this.closing) {
           User32.DestroyWindow(hWnd);
@@ -397,6 +420,8 @@ export class MainWindow {
         return 0n;
 
       case MessageFilter.WM_DESTROY:
+        closeActiveSettingsDialog();
+        this.clearPendingTimers();
         this.hwnd = 0n;
         this.editorHwnd = 0n;
         this.editor = null;
@@ -895,6 +920,18 @@ export class MainWindow {
     this.completionPopup.hide();
   }
 
+  private clearPendingTimers(): void {
+    if (this.bracketHighlightTimer) {
+      clearTimeout(this.bracketHighlightTimer);
+      this.bracketHighlightTimer = null;
+    }
+    if (this.breadcrumbRefreshTimer) {
+      clearTimeout(this.breadcrumbRefreshTimer);
+      this.breadcrumbRefreshTimer = null;
+    }
+    this.highlighter.cancel();
+  }
+
   private scheduleBracketHighlight(): void {
     if (this.bracketHighlightTimer) {
       clearTimeout(this.bracketHighlightTimer);
@@ -972,7 +1009,19 @@ export class MainWindow {
   }
 
   private async showPreferences(): Promise<void> {
+    agentLog(
+      "window.ts:showPreferences",
+      "Opening preferences dialog",
+      { owner: String(this.hwnd) },
+      "H2",
+    );
     if (!this.settingsStore) {
+      agentLog(
+        "window.ts:showPreferences",
+        "No settings store; aborting",
+        {},
+        "H2",
+      );
       return;
     }
 
@@ -980,14 +1029,43 @@ export class MainWindow {
       this.hwnd,
       this.settingsStore.editor,
     );
+    agentLog(
+      "window.ts:showPreferences",
+      "Preferences dialog closed",
+      { saved: result !== null },
+      "H2",
+    );
     if (!result) {
       return;
     }
 
     await this.settingsStore.setEditorSettings(result);
+    agentLog(
+      "window.ts:showPreferences",
+      "Editor settings persisted",
+      { showBreadcrumbs: result.showBreadcrumbs },
+      "H8",
+      "post-fix",
+    );
     this.breadcrumbBar?.setVisible(result.showBreadcrumbs);
     this.layoutClient(this.hwnd);
-    this.showInfo("Preferences saved.");
+    agentLog(
+      "window.ts:showPreferences",
+      "Layout refreshed after save",
+      {},
+      "H8",
+      "post-fix",
+    );
+    if (process.env.BUNPAD_TEST !== "1") {
+      this.showInfo("Preferences saved.");
+    }
+    agentLog(
+      "window.ts:showPreferences",
+      "Save flow completed",
+      {},
+      "H8",
+      "post-fix",
+    );
   }
 
   private async installPlugin(): Promise<void> {
@@ -1441,8 +1519,9 @@ export class MainWindow {
     }
     this.destroyed = true;
 
+    closeActiveSettingsDialog();
+    this.clearPendingTimers();
     this.themeController?.destroy();
-    this.highlighter.cancel();
     this.menuBar?.destroy();
     this.breadcrumbBar?.destroy();
     this.completionPopup.destroy();

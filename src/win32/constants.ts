@@ -6,6 +6,13 @@ export const CW_USEDEFAULT = 0x8000_0000;
 /** Frame window messages not present on MessageFilter enum. */
 export const WM_CLOSE = 0x0010;
 export const WM_COMMAND = 0x0111;
+export const WM_DESTROY = 0x0002;
+
+/** App-private: defer menu command dispatch until after TrackPopupMenu returns. */
+export const WM_APP_DEFER_COMMAND = 0x8000 + 100;
+
+/** Dialog class background — (HBRUSH)(COLOR_BTNFACE + 1). */
+export const DIALOG_BACKGROUND_BRUSH = 16;
 
 /** EDIT/RICHEDIT notification codes (HIWORD of WM_COMMAND wParam). */
 export const EN_CHANGE = 0x0300;
