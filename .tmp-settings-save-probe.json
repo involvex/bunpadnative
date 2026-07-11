@@ -1,0 +1,13 @@
+{
+  "theme": "dark",
+  "recentFiles": [],
+  "languageMode": "auto",
+  "editor": {
+    "wordCompletion": true,
+    "completionMinChars": 3,
+    "autoCloseBrackets": true,
+    "bracketMatching": true,
+    "showBreadcrumbs": true,
+    "showSymbolBreadcrumbs": true
+  }
+}
