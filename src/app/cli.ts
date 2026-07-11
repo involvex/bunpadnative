@@ -1,5 +1,13 @@
 import { existsSync } from "node:fs";
+import { homedir } from "node:os";
 import { isAbsolute, resolve } from "node:path";
+
+const expandTilde = (path: string): string => {
+  if (path.startsWith("~")) {
+    return path.replace(/^~/, process.env.USERPROFILE ?? homedir());
+  }
+  return path;
+};
 
 /** First positional CLI argument that looks like a file path to open. */
 export const parseStartupFilePath = (
@@ -17,7 +25,8 @@ export const parseStartupFilePath = (
       continue;
     }
 
-    return isAbsolute(arg) ? arg : resolve(process.cwd(), arg);
+    const expanded = expandTilde(arg);
+    return isAbsolute(expanded) ? expanded : resolve(process.cwd(), expanded);
   }
 
   return null;
@@ -39,7 +48,8 @@ export const readStartupFileFromStdin = async (): Promise<string | null> => {
     return null;
   }
 
-  return isAbsolute(line) ? line : resolve(process.cwd(), line);
+  const expanded = expandTilde(line);
+  return isAbsolute(expanded) ? expanded : resolve(process.cwd(), expanded);
 };
 
 /** Resolve startup file from argv, then optional stdin path. */
