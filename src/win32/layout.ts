@@ -1,5 +1,6 @@
 /** Client-area layout for custom chrome. */
 export const MENU_BAR_HEIGHT = 32;
+export const TAB_BAR_HEIGHT = 30;
 export const BREADCRUMB_HEIGHT = 24;
 export const STATUS_BAR_HEIGHT = 24;
 

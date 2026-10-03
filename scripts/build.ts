@@ -20,7 +20,7 @@ console.log("[build] cleaning dist/");
 await rm(dist, { recursive: true, force: true });
 await mkdir(dist, { recursive: true });
 
-console.log("[build] compiling bunpad.exe");
+console.log("[build] compiling bunpad.exe (windowed, no console)");
 const compile = Bun.spawnSync(
   [
     process.execPath,
@@ -31,6 +31,19 @@ const compile = Bun.spawnSync(
     outfile,
     "--target",
     "bun-windows-x64",
+    "--windows-hide-console",
+    "--windows-icon",
+    join(root, "assets", "bunpad.ico"),
+    "--windows-title",
+    "BunPad Native",
+    "--windows-publisher",
+    "involvex",
+    "--windows-version",
+    "0.1.0.0",
+    "--windows-description",
+    "BunPad Native text editor",
+    "--windows-copyright",
+    "MIT",
   ],
   {
     cwd: root,

@@ -17,6 +17,7 @@ const MF_BYPOSITION = 0x0400;
 /** ACCEL.fVirt — virtual-key + Ctrl modifier. */
 const FVIRTKEY = 0x01;
 const FCONTROL = 0x08;
+const FSHIFT = 0x04;
 
 /** ACCEL is 6 bytes: fVirt(1) + pad(1) + key(2) + cmd(2). */
 const ACCEL_SIZE = 6;
@@ -27,6 +28,10 @@ export enum MenuCommand {
   FileSave = 1003,
   FileSaveAs = 1004,
   FileExit = 1005,
+  FileNewTab = 1006,
+  FileCloseTab = 1007,
+  ViewNextTab = 1400,
+  ViewPrevTab = 1401,
   EditUndo = 1102,
   EditRedo = 1103,
   EditCut = 1104,
@@ -85,9 +90,10 @@ const packAccel = (
   index: number,
   key: number,
   command: MenuCommand,
+  shift = false,
 ): void => {
   const offset = index * ACCEL_SIZE;
-  buf.writeUInt8(FVIRTKEY | FCONTROL, offset);
+  buf.writeUInt8(FVIRTKEY | FCONTROL | (shift ? FSHIFT : 0), offset);
   buf.writeUInt16LE(key, offset + 2);
   buf.writeUInt16LE(command, offset + 4);
 };
@@ -310,10 +316,11 @@ export const createAppMenus = (
     );
   };
 
-  item(fileMenu, "&New", MenuCommand.FileNew);
+  item(fileMenu, "&New Tab", MenuCommand.FileNewTab);
   item(fileMenu, "&Open...", MenuCommand.FileOpen);
   item(fileMenu, "&Save", MenuCommand.FileSave);
   item(fileMenu, "Save &As...", MenuCommand.FileSaveAs);
+  item(fileMenu, "&Close Tab", MenuCommand.FileCloseTab);
   User32.AppendMenuW(fileMenu, MF_SEPARATOR, 0n, null);
   populateRecentMenu(recentMenu, recentFiles, retain);
   User32.AppendMenuW(
@@ -348,6 +355,8 @@ export const createAppMenus = (
   item(languageMenu, "&JSON", MenuCommand.LanguageJson);
   item(languageMenu, "&TypeScript", MenuCommand.LanguageTypescript);
   item(languageMenu, "&Markdown", MenuCommand.LanguageMarkdown);
+  item(viewMenu, "&Next Tab", MenuCommand.ViewNextTab);
+  item(viewMenu, "&Previous Tab", MenuCommand.ViewPrevTab);
 
   populateThemeMenu(themeMenu, themes, retain);
 
@@ -426,7 +435,7 @@ export const createAppMenus = (
   );
   populateExtensionsMenu(pluginsMenu, extensions, retain);
 
-  const accelCount = 11;
+  const accelCount = 15;
   const accelBuf = Buffer.alloc(ACCEL_SIZE * accelCount);
   packAccel(accelBuf, 0, 0x4e, MenuCommand.FileNew);
   packAccel(accelBuf, 1, 0x4f, MenuCommand.FileOpen);
@@ -439,6 +448,10 @@ export const createAppMenus = (
   packAccel(accelBuf, 8, 0x56, MenuCommand.EditPaste);
   packAccel(accelBuf, 9, 0x46, MenuCommand.EditFind);
   packAccel(accelBuf, 10, 0x48, MenuCommand.EditReplace);
+  packAccel(accelBuf, 11, 0x54, MenuCommand.FileNewTab);
+  packAccel(accelBuf, 12, 0x57, MenuCommand.FileCloseTab);
+  packAccel(accelBuf, 13, 0x09, MenuCommand.ViewNextTab);
+  packAccel(accelBuf, 14, 0x09, MenuCommand.ViewPrevTab, true);
 
   const accelTable = User32.CreateAcceleratorTableW(
     ffiPtr(accelBuf),

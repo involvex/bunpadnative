@@ -11,6 +11,7 @@ import { join } from "node:path";
 
 import { Document } from "./document";
 import { Editor } from "./editor";
+import { TabManager } from "./tabs";
 import { trackContextMenuCommand } from "./editorContextMenu";
 import {
   contextMenuScreenPoint,
@@ -80,6 +81,7 @@ import { vscodeBridge } from "../vscode/bridge";
 import type { ThemeController } from "../theme/controller";
 import { hexToColorRef } from "../theme/colors";
 import { MenuBar } from "../ui/menuBar";
+import { TabBar } from "../ui/tabBar";
 import { TrayIcon } from "../ui/trayIcon";
 import { BreadcrumbBar } from "../ui/breadcrumbBar";
 import { CompletionPopup } from "../ui/completionPopup";
@@ -109,6 +111,7 @@ import {
   BREADCRUMB_HEIGHT,
   MENU_BAR_HEIGHT,
   STATUS_BAR_HEIGHT,
+  TAB_BAR_HEIGHT,
   SWP_NOMOVE,
   SWP_NOSIZE,
   TPM_LEFTALIGN,
@@ -155,6 +158,7 @@ export class MainWindow {
   private readonly settingsStore?: SettingsStore;
   private editorContext: EditorContextImpl | null = null;
   private menuBar: MenuBar | null = null;
+  private tabBar: TabBar | null = null;
   private breadcrumbBar: BreadcrumbBar | null = null;
   private statusBar: StatusBar | null = null;
   private readonly completionPopup = new CompletionPopup();
@@ -174,8 +178,13 @@ export class MainWindow {
   /** Skip EN_CHANGE dirty marking during programmatic editor updates. */
   private suppressEditorDirty = 0;
 
-  readonly document = new Document();
   editor: Editor | null = null;
+  private readonly tabs = new TabManager();
+
+  /** Active tab's document (proxy — stable across tab switches). */
+  get document(): Document {
+    return this.tabs.activeDocument;
+  }
 
   onClose?: () => void;
 
@@ -276,6 +285,13 @@ export class MainWindow {
     );
     this.menuBar.create();
 
+    this.tabBar = new TabBar(this.hwnd, theme);
+    this.tabBar.create();
+    this.tabBar.onSelect((index) => this.switchTab(index));
+    this.tabBar.onClose((index) => void this.closeTab(index));
+    this.tabBar.onNew(() => this.newTab());
+    this.refreshTabBar();
+
     this.breadcrumbBar = new BreadcrumbBar(this.hwnd, theme);
     this.breadcrumbBar.create();
     this.breadcrumbBar.setSymbolNavigate((charOffset) => {
@@ -315,6 +331,10 @@ export class MainWindow {
 
   get editorHandle(): bigint {
     return this.editorHwnd;
+  }
+
+  get tabHandle(): bigint {
+    return this.tabBar?.handle ?? 0n;
   }
 
   get pumpContext(): MessagePumpContext {
@@ -384,9 +404,12 @@ export class MainWindow {
         if (notifyCode === EN_CHANGE && lParam === this.editorHwnd) {
           const trackDirty = this.suppressEditorDirty === 0;
           if (trackDirty && this.editor) {
-            this.document.syncDirtyFromText(this.editor.getText());
+            const text = this.editor.getText();
+            this.document.syncDirtyFromText(text);
+            this.tabs.updateActiveText(text);
             this.refreshTitle();
             this.refreshStatus();
+            this.refreshTabBar();
             if (this.editorContext && this.pluginHost) {
               this.pluginHost.scheduleTextChange(this.editorContext);
             }
@@ -514,9 +537,11 @@ export class MainWindow {
     this.applyCurrentTheme();
     if (this.editor) {
       this.document.setBaseline(this.editor.getText());
+      this.tabs.updateActiveText(this.editor.getText());
     }
     this.refreshTitle();
     this.refreshStatus();
+    this.refreshTabBar();
     void this.pluginHost?.activateAll(this.editorContext);
     void this.extensionHost?.activateStartup();
 
@@ -537,7 +562,11 @@ export class MainWindow {
 
   private chromeTopOffset(): number {
     const breadcrumbVisible = this.breadcrumbBar?.isVisible() ?? false;
-    return MENU_BAR_HEIGHT + (breadcrumbVisible ? BREADCRUMB_HEIGHT : 0);
+    return (
+      MENU_BAR_HEIGHT +
+      TAB_BAR_HEIGHT +
+      (breadcrumbVisible ? BREADCRUMB_HEIGHT : 0)
+    );
   }
 
   private layoutClient(parentHwnd: bigint): void {
@@ -552,7 +581,8 @@ export class MainWindow {
     const editorHeight = Math.max(0, height - top - STATUS_BAR_HEIGHT);
 
     this.menuBar?.resize(width);
-    this.breadcrumbBar?.resize(width, MENU_BAR_HEIGHT);
+    this.tabBar?.resize(width, MENU_BAR_HEIGHT);
+    this.breadcrumbBar?.resize(width, MENU_BAR_HEIGHT + TAB_BAR_HEIGHT);
     this.breadcrumbBar?.setVisible(
       this.settingsStore?.editor.showBreadcrumbs ?? true,
     );
@@ -569,6 +599,9 @@ export class MainWindow {
     const flags = SWP_NOMOVE | SWP_NOSIZE;
     if (this.menuBar?.handle) {
       User32.SetWindowPos(this.menuBar.handle, HWND_TOP, 0, 0, 0, 0, flags);
+    }
+    if (this.tabBar?.handle) {
+      User32.SetWindowPos(this.tabBar.handle, HWND_TOP, 0, 0, 0, 0, flags);
     }
     if (this.breadcrumbBar?.handle) {
       User32.SetWindowPos(
@@ -593,6 +626,7 @@ export class MainWindow {
 
     const theme = this.themeController.current();
     this.menuBar?.setTheme(theme);
+    this.tabBar?.setTheme(theme);
     this.breadcrumbBar?.setTheme(theme);
     this.statusBar?.setTheme(theme);
     this.refreshStatus();
@@ -692,6 +726,194 @@ export class MainWindow {
     }
   }
 
+  private refreshTabBar(): void {
+    this.tabBar?.refresh(this.tabs.labels(), this.tabs.activeIndex);
+  }
+
+  private snapshotLiveEditor(): void {
+    if (!this.editor) {
+      return;
+    }
+    this.tabs.snapshotActive(
+      this.editor.getText(),
+      this.editor.getCursorPosition(),
+    );
+  }
+
+  private activateTab(index: number): void {
+    const tab = this.tabs.tabAt(index);
+    if (!tab || !this.editor) {
+      return;
+    }
+    this.tabs.setActive(index);
+    this.runWithoutDirtyTracking(() => {
+      this.editor!.setText(tab.text);
+      this.editor!.setSelection(tab.cursor, tab.cursor);
+      this.applyEditorFormatting(true);
+    });
+    this.document.syncDirtyFromText(this.editor.getText());
+    this.highlighter.setLanguageFromPath(tab.document.path, tab.text);
+    this.editorContext = this.buildEditorContext();
+    if (this.themeController) {
+      vscodeBridge.bind(this.editor, this.document, this.hwnd, () =>
+        this.applyEditorFormatting(true),
+      );
+    }
+    this.refreshTitle();
+    this.refreshStatus();
+    this.refreshBreadcrumbs();
+    this.refreshTabBar();
+    User32.SetFocus(this.editorHwnd);
+  }
+
+  private switchTab(index: number): void {
+    if (index === this.tabs.activeIndex || !this.editor) {
+      return;
+    }
+    this.snapshotLiveEditor();
+    this.activateTab(index);
+  }
+
+  private newTab(): void {
+    this.snapshotLiveEditor();
+    this.tabs.newUntitled();
+    if (this.editor) {
+      this.runWithoutDirtyTracking(() => {
+        this.editor!.setText("");
+        this.applyEditorFormatting(true);
+      });
+      this.document.setBaseline("");
+      this.highlighter.setLanguageFromPath(null);
+      this.editorContext = this.buildEditorContext();
+      vscodeBridge.bind(this.editor, this.document, this.hwnd, () =>
+        this.applyEditorFormatting(true),
+      );
+    }
+    this.refreshTitle();
+    this.refreshStatus();
+    this.refreshBreadcrumbs();
+    this.refreshTabBar();
+    if (this.editorHwnd) {
+      User32.SetFocus(this.editorHwnd);
+    }
+  }
+
+  private nextTab(): void {
+    if (this.tabs.count < 2 || !this.editor) {
+      return;
+    }
+    this.snapshotLiveEditor();
+    this.tabs.next();
+    this.activateTab(this.tabs.activeIndex);
+  }
+
+  private previousTab(): void {
+    if (this.tabs.count < 2 || !this.editor) {
+      return;
+    }
+    this.snapshotLiveEditor();
+    this.tabs.previous();
+    this.activateTab(this.tabs.activeIndex);
+  }
+
+  private promptUnsavedChangesFor(name: string): "save" | "discard" | "cancel" {
+    const text = encodeWide(`Do you want to save changes to "${name}"?`);
+    const caption = encodeWide("BunPad");
+    const result = User32.MessageBoxW(
+      this.hwnd,
+      ffiPtr(text),
+      ffiPtr(caption),
+      MessageBoxType.MB_YESNOCANCEL | MessageBoxType.MB_ICONQUESTION,
+    );
+
+    if (result === 6) {
+      return "save";
+    }
+    if (result === 7) {
+      return "discard";
+    }
+    return "cancel";
+  }
+
+  private async closeTab(index: number): Promise<void> {
+    const tab = this.tabs.tabAt(index);
+    if (!tab) {
+      return;
+    }
+    const isActive = index === this.tabs.activeIndex;
+    if (isActive) {
+      this.snapshotLiveEditor();
+    }
+    const current = this.tabs.tabAt(index);
+    if (!current) {
+      return;
+    }
+
+    if (current.document.dirty && process.env.BUNPAD_TEST !== "1") {
+      const action = this.promptUnsavedChangesFor(
+        current.document.displayName(),
+      );
+      if (action === "cancel") {
+        return;
+      }
+      if (action === "save") {
+        if (isActive) {
+          const saved = await this.saveFile(false);
+          if (!saved) {
+            return;
+          }
+        } else {
+          // Save background tab directly from cached text.
+          const target = this.tabs.tabAt(index);
+          if (!target) {
+            return;
+          }
+          const path = target.document.path;
+          if (!path) {
+            // Bring to front so Save As dialog has editor context.
+            this.activateTab(index);
+            const saved = await this.saveFile(true);
+            if (!saved) {
+              return;
+            }
+            await this.closeTab(this.tabs.activeIndex);
+            return;
+          }
+          await target.document.writeToDisk(path, target.text);
+        }
+      }
+    }
+
+    if (this.tabs.count === 1) {
+      // Never zero tabs — reset to fresh untitled.
+      this.tabs.tabAt(0)!.document.reset();
+      const reset = this.tabs.tabAt(0)!;
+      reset.text = "";
+      reset.cursor = 0;
+      if (isActive && this.editor) {
+        this.runWithoutDirtyTracking(() => {
+          this.editor!.setText("");
+          this.applyEditorFormatting(true);
+        });
+        this.highlighter.setLanguageFromPath(null);
+        this.editorContext = this.buildEditorContext();
+      }
+      this.refreshTitle();
+      this.refreshStatus();
+      this.refreshBreadcrumbs();
+      this.refreshTabBar();
+      return;
+    }
+
+    const wasActive = index === this.tabs.activeIndex;
+    this.tabs.closeAt(index);
+    if (wasActive) {
+      this.activateTab(this.tabs.activeIndex);
+    } else {
+      this.refreshTabBar();
+    }
+  }
+
   private showInfo(message: string): void {
     const text = encodeWide(message);
     const caption = encodeWide("BunPad");
@@ -735,23 +957,7 @@ export class MainWindow {
   }
 
   private promptUnsavedChanges(): "save" | "discard" | "cancel" {
-    const name = this.document.displayName();
-    const text = encodeWide(`Do you want to save changes to "${name}"?`);
-    const caption = encodeWide("BunPad");
-    const result = User32.MessageBoxW(
-      this.hwnd,
-      ffiPtr(text),
-      ffiPtr(caption),
-      MessageBoxType.MB_YESNOCANCEL | MessageBoxType.MB_ICONQUESTION,
-    );
-
-    if (result === 6) {
-      return "save";
-    }
-    if (result === 7) {
-      return "discard";
-    }
-    return "cancel";
+    return this.promptUnsavedChangesFor(this.document.displayName());
   }
 
   private async confirmDiscardChanges(): Promise<boolean> {
@@ -770,22 +976,51 @@ export class MainWindow {
     return this.saveFile(false);
   }
 
+  /** Prompt per dirty tab on quit/hide. False = cancel. */
+  private async confirmAllTabsForClose(): Promise<boolean> {
+    this.snapshotLiveEditor();
+    for (;;) {
+      const dirty = this.tabs.dirtyIndices();
+      if (dirty.length === 0) {
+        return true;
+      }
+      const index = dirty[0]!;
+      if (index !== this.tabs.activeIndex) {
+        this.activateTab(index);
+      }
+      const action = this.promptUnsavedChangesFor(this.document.displayName());
+      if (action === "cancel") {
+        return false;
+      }
+      if (action === "discard") {
+        const tab = this.tabs.tabAt(this.tabs.activeIndex);
+        tab?.document.markClean();
+        continue;
+      }
+      const saved = await this.saveFile(false);
+      if (!saved) {
+        return false;
+      }
+    }
+  }
+
   private async handleCloseRequest(): Promise<void> {
-    if (!this.document.dirty || process.env.BUNPAD_TEST === "1") {
+    if (process.env.BUNPAD_TEST === "1") {
       this.closing = true;
       User32.DestroyWindow(this.hwnd);
       return;
     }
 
-    const action = this.promptUnsavedChanges();
-    if (action === "cancel") {
+    this.snapshotLiveEditor();
+    if (this.tabs.dirtyIndices().length === 0) {
+      this.closing = true;
+      User32.DestroyWindow(this.hwnd);
       return;
     }
-    if (action === "save") {
-      const saved = await this.saveFile(false);
-      if (!saved) {
-        return;
-      }
+
+    const ok = await this.confirmAllTabsForClose();
+    if (!ok) {
+      return;
     }
 
     this.closing = true;
@@ -793,20 +1028,20 @@ export class MainWindow {
   }
 
   private async handleHideRequest(): Promise<void> {
-    if (!this.document.dirty) {
+    if (process.env.BUNPAD_TEST === "1") {
       this.hideToTray();
       return;
     }
 
-    const action = this.promptUnsavedChanges();
-    if (action === "cancel") {
+    this.snapshotLiveEditor();
+    if (this.tabs.dirtyIndices().length === 0) {
+      this.hideToTray();
       return;
     }
-    if (action === "save") {
-      const saved = await this.saveFile(false);
-      if (!saved) {
-        return;
-      }
+
+    const ok = await this.confirmAllTabsForClose();
+    if (!ok) {
+      return;
     }
 
     this.hideToTray();
@@ -1280,10 +1515,6 @@ export class MainWindow {
       return;
     }
 
-    if (!(await this.confirmDiscardChanges())) {
-      return;
-    }
-
     await this.loadFile(path);
   }
 
@@ -1320,28 +1551,24 @@ export class MainWindow {
 
       switch (commandId) {
         case MenuCommand.FileNew:
-          if (!(await this.confirmDiscardChanges())) {
-            break;
-          }
-          this.document.reset();
-          this.highlighter.setLanguageFromPath(null);
-          this.runWithoutDirtyTracking(() => {
-            editor.setText("");
-            this.applyEditorFormatting(true);
-          });
-          if (this.editor) {
-            this.document.setBaseline(this.editor.getText());
-          }
-          this.refreshTitle();
-          this.refreshStatus();
-          this.refreshBreadcrumbs();
+        case MenuCommand.FileNewTab:
+          this.newTab();
           break;
 
         case MenuCommand.FileOpen:
-          if (!(await this.confirmDiscardChanges())) {
-            break;
-          }
           await this.openFile();
+          break;
+
+        case MenuCommand.FileCloseTab:
+          await this.closeTab(this.tabs.activeIndex);
+          break;
+
+        case MenuCommand.ViewNextTab:
+          this.nextTab();
+          break;
+
+        case MenuCommand.ViewPrevTab:
+          this.previousTab();
           break;
 
         case MenuCommand.FileSave:
@@ -1533,7 +1760,17 @@ export class MainWindow {
       return;
     }
 
-    const text = await this.document.readFromDisk(path);
+    const probe = new Document();
+    const text = await probe.readFromDisk(path);
+    this.snapshotLiveEditor();
+    if (this.tabs.canAdoptForOpen()) {
+      this.tabs.adoptFileText(path, text);
+      this.document.utf8Bom = probe.utf8Bom;
+    } else {
+      this.tabs.openFileText(path, text);
+      this.document.utf8Bom = probe.utf8Bom;
+    }
+    const tab = this.tabs.activeTab;
     this.highlighter.setLanguageFromPath(path, text);
     this.highlighter.cancel();
     this.runWithoutDirtyTracking(() => {
@@ -1541,11 +1778,18 @@ export class MainWindow {
       this.applyEditorFormatting(true);
     });
     this.document.setBaseline(editor.getText());
+    tab.text = editor.getText();
+    tab.cursor = 0;
+    this.editorContext = this.buildEditorContext();
+    vscodeBridge.bind(editor, this.document, this.hwnd, () =>
+      this.applyEditorFormatting(true),
+    );
     await this.settingsStore?.addRecentFile(path);
     this.refreshRecentMenu();
     this.refreshTitle();
     this.refreshStatus();
     this.refreshBreadcrumbs();
+    this.refreshTabBar();
   }
 
   private async saveFile(saveAs: boolean): Promise<boolean> {
@@ -1571,11 +1815,13 @@ export class MainWindow {
           )
         : editor.getText(),
     );
+    this.tabs.updateActiveText(editor.getText());
     await this.settingsStore?.addRecentFile(path);
     this.refreshRecentMenu();
     this.refreshTitle();
     this.refreshStatus();
     this.refreshBreadcrumbs();
+    this.refreshTabBar();
     return true;
   }
 
@@ -1618,10 +1864,12 @@ export class MainWindow {
     this.trayIcon = null;
     this.themeController?.destroy();
     this.menuBar?.destroy();
+    this.tabBar?.destroy();
     this.breadcrumbBar?.destroy();
     this.completionPopup.destroy();
     this.statusBar?.destroy();
     this.menuBar = null;
+    this.tabBar = null;
     this.breadcrumbBar = null;
     this.statusBar = null;
 

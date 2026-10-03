@@ -30,8 +30,8 @@ await themeManager.init();
 const menus = createAppMenus(themeManager.summaries, settings.recentFiles, []);
 
 const fileCount = User32.GetMenuItemCount(menus.fileMenu);
-if (fileCount !== 8) {
-  throw new Error(`File menu expected 8 items, got ${fileCount}`);
+if (fileCount !== 9) {
+  throw new Error(`File menu expected 9 items, got ${fileCount}`);
 }
 
 const editCount = User32.GetMenuItemCount(menus.editMenu);
@@ -42,9 +42,9 @@ if (editCount !== 11) {
 const viewCount = User32.GetMenuItemCount(menus.viewMenu);
 const settingsCount = User32.GetMenuItemCount(menus.settingsMenu);
 const themeCount = themeManager.summaries.length;
-if (viewCount !== 1) {
+if (viewCount !== 3) {
   throw new Error(
-    `View menu expected 1 item (Language Mode), got ${viewCount}`,
+    `View menu expected 3 items (Language Mode + Next/Prev Tab), got ${viewCount}`,
   );
 }
 if (settingsCount !== 4) {

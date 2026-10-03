@@ -14,7 +14,9 @@ export const ffiPtr = (buf: FfiBuffer): Pointer => {
 };
 
 /** Coerce a Bun FFI pointer (or buffer view) to bigint for manual struct packing. */
-export const pointerToBigInt = (value: Pointer | FfiBuffer): bigint => {
+export const pointerToBigInt = (
+  value: Pointer | FfiBuffer | bigint | number,
+): bigint => {
   if (typeof value === "bigint") {
     return value;
   }
